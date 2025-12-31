@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
+
+  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
+  <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
+
+  <div class="mb-4 text-sm text-zinc-700 space-y-1">
+    <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
+    <div><span class="font-semibold">Ingressos:</span> {{ tickets|length }}</div>
+  </div>
+
+  <!-- 🔹 AÇÕES GERAIS -->
+  <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <button
+      onclick="enviarTodosWhatsApp()"
+      class="rounded-xl bg-black text-white py-3 text-sm font-medium"
+    >
+      Enviar todos no WhatsApp
+    </button>
+
+    <button
+      onclick="copiarListaLinks()"
+      class="rounded-xl border py-3 text-sm hover:bg-zinc-50"
+    >
+      Copiar lista de links
+    </button>
+  </div>
+
+  <div class="divide-y rounded-xl border">
+    {% for ticket in tickets %}
+      {% set ticket_url = url_for('ticket_public', token=ticket.token, _external=True) %}
+      {% set wa_text = "Seu ingresso do Sons & Sabores (" ~ purchase.show_name ~ ") ✅\n\n" ~
+                       "Nome: " ~ ticket.person_name ~ "\n" ~
+                       "Link do ingresso:\n" ~ ticket_url ~ "\n\n" ~
+                       "Apresente o QR Code na entrada." %}
+      {% set wa_link = "https://wa.me/?text=" ~ wa_text|urlencode %}
+
+      <div class="p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-semibold truncate">
+              {{ ticket.person_name }}
+              {% if ticket.person_type == 'buyer' %}
+                <span class="text-xs text-zinc-500">(Comprador)</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-zinc-500 break-all">
+              {{ ticket_url }}
+            </div>
+          </div>
+
+          <a
+            href="{{ ticket_url }}"
+            class="shrink-0 rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+          >
+            Ver ingresso
+          </a>
+        </div>
+
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <a
+            href="{{ url_for('ticket_png', token=ticket.token) }}?v=1"
+            class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 text-center"
+          >
+            PNG
+          </a>
+
+          <a
+            href="{{ url_for('ticket_pdf', token=ticket.token) }}"
+            class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 text-center"
+          >
+            PDF
+          </a>
+
+          <button
+            onclick="navigator.clipboard.writeText('{{ ticket_url }}')"
+            class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+          >
+            Copiar link
+          </button>
+
+          <a
+            href="{{ wa_link }}"
+            target="_blank"
+            rel="noopener"
+            class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 text-center"
+          >
+            WhatsApp
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<!-- ===================== -->
+<!-- SCRIPTS -->
+<!-- ===================== -->
+<script>
+  function enviarTodosWhatsApp() {
+    const links = [
+      {% for ticket in tickets %}
+        "{{ url_for('ticket_public', token=ticket.token, _external=True) }}",
+      {% endfor %}
+    ];
+
+    links.forEach((link, i) => {
+      const text =
+        "Seu ingresso do Sons & Sabores ✅\n\n" +
+        "Link do ingresso:\n" + link + "\n\n" +
+        "Apresente o QR Code na entrada.";
+
+      const url = "https://wa.me/?text=" + encodeURIComponent(text);
+      setTimeout(() => window.open(url, "_blank"), i * 400);
+    });
+  }
+
+  function copiarListaLinks() {
+    let texto = "Ingressos — Sons & Sabores ({{ purchase.show_name }})\n\n";
+
+    {% for ticket in tickets %}
+      texto += "• {{ ticket.person_name }}:\n";
+      texto += "{{ url_for('ticket_public', token=ticket.token, _external=True) }}\n\n";
+    {% endfor %}
+
+    navigator.clipboard.writeText(texto);
+    alert("Lista de links copiada ✅");
+  }
+</script>
+
+{% endblock %}

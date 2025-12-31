@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow p-5">
+  <h2 class="text-xl font-semibold">Comprar ingresso — {{ event.name }}</h2>
+
+  <div class="mt-3 rounded-xl bg-zinc-50 border p-3 text-sm text-zinc-700">
+    <div class="font-semibold">Como funciona</div>
+    <ul class="list-disc pl-5 mt-1 space-y-1">
+      <li>O valor é <b>por pessoa</b>.</li>
+      <li>Você precisa informar <b>nome e sobrenome</b> do comprador e de cada acompanhante.</li>
+      <li>Escreva <b>1 pessoa por linha</b> em “Acompanhantes”.</li>
+    </ul>
+  </div>
+
+  <form method="post" class="mt-4 grid gap-3">
+
+    <div>
+      <label class="text-sm text-zinc-600">Show *</label>
+      <select name="show_name" class="w-full rounded-xl border p-3" required>
+        <option value="" disabled selected>Selecione o show</option>
+        <option value="Jimmy Duchowny e Mark Lambert">Jimmy Duchowny e Mark Lambert</option>
+        <option value="Rodrigo Quintela">Rodrigo Quintela</option>
+        <option value="Alexandre Araújo">Alexandre Araújo</option>
+        <option value="Thiago Delegado">Thiago Delegado</option>
+        <option value="Hudson de Souza">Hudson de Souza</option>
+        <option value="Alexandre Rezende">Alexandre Rezende</option>
+        <option value="Marilton">Marilton Borges e Rodrigo Borges</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Nome do comprador (nome e sobrenome) *</label>
+      <input name="buyer_name" class="w-full rounded-xl border p-3" required placeholder="Ex: Gustavo Passos">
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
+        <label class="text-sm text-zinc-600">CPF</label>
+        <input name="buyer_cpf" class="w-full rounded-xl border p-3" placeholder="Somente números ou com máscara">
+      </div>
+      <div>
+        <label class="text-sm text-zinc-600">Telefone</label>
+        <input
+          name="buyer_phone"
+          id="buyer_phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          placeholder="(31) 99999-9999"
+          class="w-full rounded-xl border p-3"
+        >
+      </div>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">E-mail</label>
+      <input name="buyer_email" type="email" class="w-full rounded-xl border p-3">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Acompanhantes (1 por linha, nome e sobrenome)</label>
+      <textarea
+        name="guests_text"
+        rows="5"
+        class="w-full rounded-xl border p-3"
+        placeholder="Ex:
+Aline Souza
+Luana Junqueira
+Leonora Pinto"
+      ></textarea>
+
+      <p class="text-xs text-zinc-500 mt-2">
+        Dica: cada linha vira um ingresso separado.
+      </p>
+    </div>
+
+    <button class="rounded-xl bg-black text-white py-3 font-medium">Ir para pagamento</button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById("buyer_phone");
+    if (!input) return;
+
+    function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
+
+    function formatBRPhone(digits) {
+      digits = digits.slice(0, 11);
+      const ddd = digits.slice(0, 2);
+      const rest = digits.slice(2);
+      if (!ddd) return "";
+
+      if (digits.length <= 10) {
+        const p1 = rest.slice(0, 4);
+        const p2 = rest.slice(4, 8);
+        if (!p1) return `(${ddd}`;
+        if (!p2) return `(${ddd}) ${p1}`;
+        return `(${ddd}) ${p1}-${p2}`;
+      } else {
+        const p1 = rest.slice(0, 5);
+        const p2 = rest.slice(5, 9);
+        if (!p1) return `(${ddd}`;
+        if (!p2) return `(${ddd}) ${p1}`;
+        return `(${ddd}) ${p1}-${p2}`;
+      }
+    }
+
+    function applyMask() {
+      input.value = formatBRPhone(onlyDigits(input.value));
+    }
+
+    input.addEventListener("input", applyMask);
+    input.addEventListener("blur", applyMask);
+  })();
+</script>
+{% endblock %}

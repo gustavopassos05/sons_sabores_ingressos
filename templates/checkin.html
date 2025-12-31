@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow p-5">
+  <h2 class="text-xl font-semibold">Check-in — Sons & Sabores</h2>
+
+  {% if status == "not_found" %}
+    <div class="mt-4 rounded-xl bg-rose-100 p-4">❌ Ingresso não encontrado</div>
+  {% elif status == "already" %}
+    <div class="mt-4 rounded-xl bg-amber-100 p-4">⚠️ Ingresso já utilizado</div>
+  {% elif status == "invalid" %}
+    <div class="mt-4 rounded-xl bg-rose-100 p-4">❌ Ingresso inválido</div>
+  {% else %}
+    <div class="mt-4 rounded-xl bg-emerald-100 p-4">✅ Ingresso válido</div>
+  {% endif %}
+
+  {% if ticket %}
+    <div class="mt-4 text-sm">
+      <div><b>Comprador:</b> {{ ticket.buyer_name }}</div>
+      <div><b>Adultos:</b> {{ ticket.qty_adult }} | <b>Crianças:</b> {{ ticket.qty_child }}</div>
+      {% if ticket.guests_text %}
+        <div class="mt-2"><b>Acompanhantes:</b><pre class="text-xs bg-zinc-50 p-2 rounded-xl whitespace-pre-wrap">{{ ticket.guests_text }}</pre></div>
+      {% endif %}
+    </div>
+
+    <div class="mt-4 flex gap-2">
+      <a class="rounded-xl border px-4 py-3 hover:bg-zinc-50" href="{{ url_for('ticket_public', token=ticket.token) }}">Ver ingresso</a>
+
+      {% if status == "ok" %}
+        <form method="post" action="{{ url_for('checkin_confirm', token=ticket.token) }}">
+          <button class="rounded-xl bg-black text-white px-4 py-3">Confirmar entrada</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

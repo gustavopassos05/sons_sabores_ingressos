@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+
+  {# --- cálculos de exibição --- #}
+  {% set total_people = 1 + ((purchase.guests_text or '').splitlines() | select('string') | list | length) %}
+  {% set unit_price = (ticket_price_cents or 5000) / 100 %}
+  {% set total_price = (payment.amount_cents or 0) / 100 %}
+
+  {% if payment.status == "paid" %}
+    <div class="p-3 rounded-xl bg-green-100 border border-green-300 text-green-900 mb-4">
+      <div class="font-semibold">Pagamento confirmado ✅</div>
+      <div class="text-sm text-green-900/80">
+        Seus ingressos já estão liberados (1 por pessoa).
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-5">
+      <h2 class="text-xl font-semibold mb-2">Pagamento</h2>
+
+      <div class="text-sm text-zinc-700 space-y-1">
+        <div><span class="font-semibold">Show:</span> {{ purchase.show_name }}</div>
+        <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
+
+        <div class="pt-2 border-t mt-2"></div>
+
+        <div><span class="font-semibold">Total de pessoas:</span> {{ total_people }}</div>
+        <div><span class="font-semibold">Valor por pessoa:</span> R$ {{ '%.2f'|format(unit_price) }}</div>
+        <div class="text-base">
+          <span class="font-semibold">Total:</span> R$ {{ '%.2f'|format(total_price) }}
+        </div>
+
+        {% if payment.expires_at %}
+          <div class="text-xs text-zinc-500 pt-2">
+            <span class="font-semibold">Expira em:</span> {{ payment.expires_at }}
+          </div>
+        {% endif %}
+      </div>
+
+      <a
+        href="{{ url_for('purchase_public', token=purchase.token) }}"
+        class="mt-5 inline-flex w-full justify-center rounded-xl bg-black text-white py-3 font-medium"
+      >
+        Ver ingressos
+      </a>
+    </div>
+
+  {% else %}
+    <div class="p-3 rounded-xl bg-yellow-100 border border-yellow-300 text-yellow-900 mb-4">
+      <div class="font-semibold">Aguardando pagamento…</div>
+      <div class="text-sm text-yellow-900/80">
+        O valor é <b>por pessoa</b>. Assim que confirmar, seus ingressos liberam automaticamente.
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-5">
+      <h2 class="text-xl font-semibold mb-2">Pagamento via Pix</h2>
+
+      <div class="text-sm text-zinc-700 space-y-1">
+        <div><span class="font-semibold">Show:</span> {{ purchase.show_name }}</div>
+        <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
+
+        <div class="pt-2 border-t mt-2"></div>
+
+        <div><span class="font-semibold">Total de pessoas:</span> {{ total_people }}</div>
+        <div><span class="font-semibold">Valor por pessoa:</span> R$ {{ '%.2f'|format(unit_price) }}</div>
+        <div class="text-base">
+          <span class="font-semibold">Total:</span> R$ {{ '%.2f'|format(total_price) }}
+        </div>
+
+        {% if payment.expires_at %}
+          <div class="text-xs text-zinc-500 pt-2">
+            <span class="font-semibold">Expira em:</span> {{ payment.expires_at }}
+          </div>
+        {% endif %}
+      </div>
+
+      {% if payment.qr_image_base64 %}
+        <div class="flex justify-center my-5">
+          <img
+            src="data:image/png;base64,{{ payment.qr_image_base64 }}"
+            alt="QR Code Pix"
+            class="w-64 h-64 border rounded-xl"
+          />
+        </div>
+      {% endif %}
+
+      {% if payment.qr_text %}
+        <label class="text-sm text-zinc-600">Pix copia e cola</label>
+        <textarea class="w-full rounded-xl border p-3 text-sm mt-2" rows="4" readonly>{{ payment.qr_text }}</textarea>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('pay_refresh', payment_id=payment.id) }}" class="mt-4">
+        <button class="w-full rounded-xl border py-3 font-medium">
+          Já paguei — atualizar status
+        </button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

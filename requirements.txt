@@ -1,0 +1,10 @@
+Flask==3.0.3
+gunicorn==22.0.0
+SQLAlchemy==2.0.32
+psycopg2-binary==2.9.9
+qrcode==7.4.2
+Pillow==10.4.0
+reportlab==4.2.2
+python-dotenv==1.0.1
+PyMySQL==1.1.1
+requests
