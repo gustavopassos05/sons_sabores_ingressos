@@ -1,79 +1,84 @@
-# routes/purchase.py
 import os
 import secrets
 from datetime import datetime
 
-from flask import Blueprint, request, redirect, url_for, flash, abort
-
+from flask import (
+    Blueprint, abort, flash, redirect, render_template, request, url_for
+)
 from sqlalchemy import select
 
 from models import Event, Purchase, Payment
-from app_services.payments.pagseguro import create_checkout_redirect
+from services_utils import db  # <- ajuste se sua função db() estiver em outro lugar
+
+# ✅ IMPORT DO PAGSEGURO/PAGBANK (ajuste conforme seu arquivo real)
+# Se você ainda estiver usando PIX PagBank:
+from pagbank import create_pix_order
+
+# Se você já criou o módulo em services/payments/pagseguro.py:
+# from services.payments.pagseguro import create_checkout_redirect
 
 
 bp_purchase = Blueprint("purchase", __name__)
 
 
-def _digits(s: str) -> str:
-    return "".join(c for c in (s or "") if c.isdigit())
-
-
-def _has_name_and_surname(full_name: str) -> bool:
-    parts = [p for p in (full_name or "").strip().split() if p]
-    return len(parts) >= 2
-
-
-@bp.post("/buy/<event_slug>")
-def buy_post(event_slug: str):
-    show_name = (request.form.get("show_name") or "").strip()
-    if not show_name:
-        flash("Selecione o show.", "error")
-        return redirect(url_for("buy", event_slug=event_slug))
-
-    buyer_name = (request.form.get("buyer_name") or "").strip()
-    if not buyer_name:
-        flash("Nome do comprador é obrigatório.", "error")
-        return redirect(url_for("buy", event_slug=event_slug))
-
-    if not _has_name_and_surname(buyer_name):
-        flash("Informe nome e sobrenome do comprador.", "error")
-        return redirect(url_for("buy", event_slug=event_slug))
-
-    buyer_cpf = (request.form.get("buyer_cpf") or "").strip()
-    buyer_email = (request.form.get("buyer_email") or "").strip()
-    buyer_phone = (request.form.get("buyer_phone") or "").strip()
-
-    guests_raw = (request.form.get("guests_text") or "").strip()
-    guests_lines = [x.strip() for x in guests_raw.splitlines() if x.strip()]
-
-    # valida acompanhantes: nome + sobrenome
-    for g in guests_lines:
-        if not _has_name_and_surname(g):
-            flash(f"Acompanhante precisa ter nome e sobrenome: “{g}”.", "error")
-            return redirect(url_for("buy", event_slug=event_slug))
-
-    guests_text = "\n".join(guests_lines)
-
-    # ✅ cobra por pessoa
-    unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
-    total_people = 1 + len(guests_lines)
-    total_cents = unit_price_cents * total_people
-    total_brl = total_cents / 100.0
-
-    base_url = (os.getenv("BASE_URL") or "http://127.0.0.1:5005").rstrip("/")
-
-    # token da compra (UNIQUE + NOT NULL)
-    purchase_token = secrets.token_urlsafe(24)
-
-    # cpf só dígitos pro PagSeguro
-    buyer_tax_id_digits = _digits(buyer_cpf)
-
-    from app import db  # usa o helper do seu create_app
+@bp_purchase.get("/buy/<event_slug>")
+def buy(event_slug: str):
     with db() as s:
         ev = s.scalar(select(Event).where(Event.slug == event_slug))
         if not ev:
             abort(404)
 
+    return render_template(
+        "buy.html",
+        event=ev,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )
+
+
+@bp_purchase.post("/buy/<event_slug>")
+def buy_post(event_slug: str):
+    base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
+    if not base_url:
+        raise RuntimeError("BASE_URL não configurado no .env (ex: https://seu-app.onrender.com)")
+
+    show_name = (request.form.get("show_name") or "").strip()
+    if not show_name:
+        flash("Selecione o show.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    buyer_name = (request.form.get("buyer_name") or "").strip()
+    if not buyer_name:
+        flash("Nome do comprador é obrigatório.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    buyer_cpf = (request.form.get("buyer_cpf") or "").strip()
+    buyer_email = (request.form.get("buyer_email") or "").strip()
+    buyer_phone = (request.form.get("buyer_phone") or "").strip()
+
+    qty_adult = int(request.form.get("qty_adult") or 1)
+
+    guests_raw = (request.form.get("guests_text") or "").strip()
+    guests_lines = [x.strip() for x in guests_raw.splitlines() if x.strip()]
+    guests_text = "\n".join(guests_lines)
+
+    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    total_people = 1 + len(guests_lines)  # comprador + acompanhantes
+    total_cents = price_cents_unit * total_people
+
+    exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
+
+    # ✅ token da purchase (NOT NULL + UNIQUE)
+    purchase_token = secrets.token_urlsafe(24)
+
+    # ✅ PagBank: CPF só dígitos
+    buyer_tax_id_digits = "".join(c for c in buyer_cpf if c.isdigit())
+
+    with db() as s:
+        ev = s.scalar(select(Event).where(Event.slug == event_slug))
+        if not ev:
+            abort(404)
+
+        # 1) cria purchase
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
@@ -83,42 +88,67 @@ def buy_post(event_slug: str):
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             guests_text=guests_text,
+            qty_adult=qty_adult,
             status="pending_payment",
             created_at=datetime.utcnow(),
         )
         s.add(purchase)
         s.commit()
 
-        # cria checkout redirect (cartão + pix etc dentro do PagSeguro)
-        notify_url = f"{base_url}/webhooks/pagseguro"  # (se você quiser implementar notificação)
-        redirect_back = f"{base_url}/purchase/{purchase.token}"
+        # 2) cria order Pix (PagBank) com valor total
+        notification_url = f"{base_url}/webhooks/pagbank"
 
-        checkout_code, pay_url = create_checkout_redirect(
-            reference=f"purchase-{purchase.id}",
-            item_description=f"Sons & Sabores - {show_name} ({total_people} pessoa(s))",
-            amount_brl=total_brl,
+        order_id, qr_text, qr_b64, expires_at = create_pix_order(
+            reference_id=f"purchase-{purchase.id}",
             buyer_name=buyer_name,
             buyer_email=buyer_email,
-            buyer_phone=buyer_phone,
-            buyer_cpf=buyer_tax_id_digits,
-            redirect_url=redirect_back,
-            notification_url=notify_url,
+            buyer_tax_id=buyer_tax_id_digits,
+            buyer_phone_digits=buyer_phone,
+            item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+            amount_cents=total_cents,
+            notification_url=notification_url,
+            expires_minutes=exp_min,
         )
 
         payment = Payment(
             purchase_id=purchase.id,
-            provider="pagseguro_redirect",
+            provider="pagbank",
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=checkout_code,  # guarda o code
-            qr_text="",
-            qr_image_base64="",
-            expires_at=None,
+            external_id=order_id,
+            qr_text=qr_text,
+            qr_image_base64=qr_b64,
+            expires_at=expires_at.replace(tzinfo=None) if expires_at else None,
             paid_at=None,
         )
         s.add(payment)
         s.commit()
 
-    # ✅ manda o cliente pro PagSeguro (redirect)
-    return redirect(pay_url)
+        return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
+
+
+@bp_purchase.get("/pay/<int:payment_id>")
+def pay_pix(payment_id: int):
+    with db() as s:
+        p = s.get(Payment, payment_id)
+        if not p:
+            abort(404)
+
+        purchase = s.get(Purchase, p.purchase_id) if p.purchase_id else None
+        if not purchase:
+            abort(404)
+
+        ev = s.get(Event, purchase.event_id)
+
+        # se já pago, manda pra lista de ingressos
+        if purchase.status == "paid" or p.status == "paid":
+            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+
+    return render_template(
+        "pay_pix.html",
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+        payment=p,
+        purchase=purchase,
+        event=ev,
+    )
