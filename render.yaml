@@ -2,27 +2,42 @@ services:
   - type: web
     name: sons-sabores-ingressos
     env: python
-    plan: starter
-
+    plan: free
     buildCommand: pip install -r requirements.txt
-
-    # ✅ Opção B (wsgi.py na raiz)
-    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120
-
-    disk:
-      name: sons-sabores-data
-      mountPath: /var/data
-      sizeGB: 1
-
+    startCommand: gunicorn wsgi:app
     envVars:
-      # ✅ melhor fixar aqui do que depender do ambiente
       - key: PYTHON_VERSION
-        value: 3.12.7
-
-      # ✅ seu app precisa disso no Render (não use caminho Windows)
-      - key: STORAGE_DIR
-        value: /var/data/storage
-
-      # (opcional mas recomendado)
+        value: 3.11.10
       - key: WEB_CONCURRENCY
         value: "1"
+
+
+      - key: SECRET_KEY
+        sync: false
+      - key: BASE_URL
+        sync: false
+
+      - key: DATABASE_URL
+        sync: false
+
+      # ✅ storage temporário (Linux)
+      - key: STORAGE_DIR
+        value: /tmp/sons_sabores_ingressos_storage
+
+      # FTP
+      - key: FTP_HOSTS
+        value: br52.hostgator.com.br
+      - key: FTP_PORT
+        value: "21"
+      - key: FTP_PASSIVE
+        value: "1"
+      - key: FTP_SECURITY
+        value: explicit
+      - key: FTP_USERNAME
+        sync: false
+      - key: FTP_PASSWORD
+        sync: false
+      - key: FTP_DIR
+        value: /public_html/borogodobar.com.br/sons_sabores_ingressos_data/
+      - key: FTP_PUBLIC_BASE
+        value: https://borogodobar.com.br/sons_sabores_ingressos_data
