@@ -1,7 +1,7 @@
 # routes/tickets.py
 from flask import Blueprint, render_template, abort
 from sqlalchemy import select
-
+from db import db
 from models import Purchase, Ticket
 from app import db
 
