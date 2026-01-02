@@ -8,6 +8,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
+      - key: STORAGE_DIR
+        value: /tmp/sons_sabores_ingressos_storage
+
 
 
       - key: SECRET_KEY
