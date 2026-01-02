@@ -14,21 +14,14 @@ def ftp_push_purchase(purchase_token: str):
         purchase = s.scalar(select(Purchase).where(Purchase.token == purchase_token))
         if not purchase:
             abort(404)
-
         tickets = list(s.scalars(select(Ticket).where(Ticket.purchase_id == purchase.id)))
 
     ok_all = True
     for t in tickets:
         if t.png_path:
-            local = str(t.png_path)
-            remote_name = local.split("/")[-1].split("\\")[-1]
-            ok, info = upload_file(local, remote_filename=remote_name)
+            ok, _info = upload_file(t.png_path, remote_filename=str(t.png_path).split("/")[-1].split("\\")[-1])
             if not ok:
                 ok_all = False
 
-    if ok_all:
-        flash("Upload FTP concluído ✅", "success")
-    else:
-        flash("Upload FTP concluído com erros. Veja o log do Render.", "warning")
-
+    flash("Upload FTP concluído ✅" if ok_all else "Upload FTP com erros. Veja o log do Render.", "success" if ok_all else "warning")
     return redirect(url_for("tickets.purchase_public", token=purchase.token))

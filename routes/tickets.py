@@ -22,8 +22,4 @@ def purchase_public(token: str):
             )
         )
 
-    return render_template(
-        "purchase_public.html",
-        purchase=purchase,
-        tickets=tickets,
-    )
+    return render_template("purchase_public.html", purchase=purchase, tickets=tickets)

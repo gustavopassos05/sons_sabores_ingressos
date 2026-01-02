@@ -1,20 +1,17 @@
+# app.py
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for, session
-from werkzeug.security import generate_password_hash
+from flask import Flask, redirect, url_for
 
-from models import Base
-from db import db
+from models import Base  # se você usa Base.metadata.create_all
+from db import engine    # vamos usar o engine do db.py
 
 from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
 
-#from finalize_purchase import finalize_purchase_factory
-
-load_dotenv()
+load_dotenv()  # local ok; no Render as env vars vêm do painel
 
 
 def create_app() -> Flask:
@@ -22,11 +19,15 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me")
 
     app.config["APP_NAME"] = os.getenv("APP_NAME", "Sons & Sabores · Ingressos")
-    app.config["BASE_URL"] = os.getenv("BASE_URL", "http://127.0.0.1:5005").rstrip("/")
+    app.config["BASE_URL"] = (os.getenv("BASE_URL", "http://127.0.0.1:5005") or "").rstrip("/")
 
-    # ✅ No Render free use /tmp (seta via env var)
-    app.config["STORAGE_DIR"] = Path(os.getenv("STORAGE_DIR", "/tmp/sons_sabores_ingressos_storage")).resolve()
-    app.config["TICKET_BASE_IMAGE_PATH"] = Path(os.getenv("TICKET_BASE_IMAGE_PATH", "static/ticket_base.png")).resolve()
+    # ✅ NO RENDER, use /tmp (plano free não tem disk)
+    storage_default = "/tmp/sons_sabores_ingressos_storage"
+    app.config["STORAGE_DIR"] = Path(os.getenv("STORAGE_DIR", storage_default)).resolve()
+
+    app.config["TICKET_BASE_IMAGE_PATH"] = Path(
+        os.getenv("TICKET_BASE_IMAGE_PATH", "static/ticket_base.png")
+    ).resolve()
 
     app.config["SHOWS"] = [
         "Jimmy Duchowny e Mark Lambert",
@@ -38,41 +39,16 @@ def create_app() -> Flask:
         "Marilton",
     ]
 
-    # ✅ inicializa DB (engine + SessionLocal) e cria tabelas
-    db(app, Base)
+    # ✅ cria tabelas (ok pro começo; depois você pode migrar para Alembic)
+    Base.metadata.create_all(engine)
 
-    # ----- admin simples -----
-    admin_user = os.getenv("ADMIN_USERNAME", "admin")
-    admin_pass = os.getenv("ADMIN_PASSWORD", "change-me")
-    admin_hash = generate_password_hash(admin_pass)
-
-    def is_logged_in() -> bool:
-        return session.get("admin_logged_in") is True
-
-    def require_login():
-        if not is_logged_in():
-            return redirect(url_for("admin_login"))
-        return None
-
-    app.extensions["require_login"] = require_login
-
-    # finalize_purchase (gera tickets + arquivos local)
-    app.extensions["finalize_purchase"] = finalize_purchase_factory(app)
-
+    # home
     @app.get("/")
     def home():
         default_slug = os.getenv("DEFAULT_EVENT_SLUG", "sons-e-sabores")
         return redirect(url_for("purchase.buy", event_slug=default_slug))
 
-    @app.get("/admin/login")
-    def admin_login():
-        return "TODO: template login"
-
-    @app.post("/admin/login")
-    def admin_login_post():
-        return "TODO"
-
-    # ✅ registra blueprints
+    # registra blueprints
     app.register_blueprint(bp_purchase)
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)
@@ -81,6 +57,3 @@ def create_app() -> Flask:
 
 
 app = create_app()
-
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5005, debug=True)
