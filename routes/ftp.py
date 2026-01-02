@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Ticket
-from services.ftp_uploader import upload_file  # ✅ caminho correto
+from app_services.ftp_uploader import upload_file  # ✅ caminho correto
 
 bp_ftp = Blueprint("ftp", __name__)
 

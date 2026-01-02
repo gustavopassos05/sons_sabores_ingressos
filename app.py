@@ -6,7 +6,7 @@ from flask import Flask, redirect, url_for, session
 from werkzeug.security import generate_password_hash
 
 from models import Base
-from db import init_db
+from db import db
 
 from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
