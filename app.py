@@ -39,7 +39,7 @@ def create_app() -> Flask:
     ]
 
     # ✅ inicializa DB (engine + SessionLocal) e cria tabelas
-    init_db(app, Base)
+    db(app, Base)
 
     # ----- admin simples -----
     admin_user = os.getenv("ADMIN_USERNAME", "admin")
