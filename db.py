@@ -15,7 +15,13 @@ engine = create_engine(
     pool_recycle=int(os.getenv("DB_POOL_RECYCLE_SECONDS", "280")),
 )
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,  # ✅ importante
+)
+
 
 
 @contextmanager
