@@ -9,6 +9,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.10
 
+
       - key: SECRET_KEY
         sync: false
       - key: BASE_URL
