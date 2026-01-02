@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-
+from db import db
 from dotenv import load_dotenv
 from flask import Flask, redirect, url_for, session
 from sqlalchemy import create_engine
