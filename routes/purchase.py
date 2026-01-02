@@ -1,22 +1,13 @@
 import os
 import secrets
 from datetime import datetime
-from db import db
 
-from flask import (
-    Blueprint, abort, flash, redirect, render_template, request, url_for
-)
+from db import db
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from models import Event, Purchase, Payment
-
-# ✅ IMPORT DO PAGSEGURO/PAGBANK (ajuste conforme seu arquivo real)
-# Se você ainda estiver usando PIX PagBank:
 from pagbank import create_pix_order
-
-# Se você já criou o módulo em services/payments/pagseguro.py:
-# from services.payments.pagseguro import create_checkout_redirect
-
 
 bp_purchase = Blueprint("purchase", __name__)
 
@@ -67,10 +58,7 @@ def buy_post(event_slug: str):
 
     exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
 
-    # ✅ token da purchase (NOT NULL + UNIQUE)
     purchase_token = secrets.token_urlsafe(24)
-
-    # ✅ PagBank: CPF só dígitos
     buyer_tax_id_digits = "".join(c for c in buyer_cpf if c.isdigit())
 
     with db() as s:
@@ -78,7 +66,6 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # 1) cria purchase
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
@@ -95,7 +82,6 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # 2) cria order Pix (PagBank) com valor total
         notification_url = f"{base_url}/webhooks/pagbank"
 
         order_id, qr_text, qr_b64, expires_at = create_pix_order(
@@ -141,7 +127,6 @@ def pay_pix(payment_id: int):
 
         ev = s.get(Event, purchase.event_id)
 
-        # se já pago, manda pra lista de ingressos
         if purchase.status == "paid" or p.status == "paid":
             return redirect(url_for("tickets.purchase_public", token=purchase.token))
 
