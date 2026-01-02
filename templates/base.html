@@ -15,16 +15,7 @@
       </div>
       <div class="flex gap-2">
         <a class="text-sm underline" href="{{ url_for('home') }}">Comprar</a>
-        {% if 'tickets.admin_tickets' in current_app.view_functions %}
-          <a class="text-sm underline" href="{{ url_for('tickets.admin_tickets') }}">Admin</a>
-        {% else %}
-          <a class="text-sm underline opacity-50 cursor-not-allowed" href="#" onclick="return false;">Admin</a>
-        {% endif %}
-
-
-
-
-
+        
       </div>
     </header>
 
