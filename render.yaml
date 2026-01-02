@@ -4,13 +4,10 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:app
+    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
-      - key: WEB_CONCURRENCY
-        value: "1"
-
 
       - key: SECRET_KEY
         sync: false

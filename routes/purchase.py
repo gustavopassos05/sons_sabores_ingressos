@@ -8,7 +8,7 @@ from flask import Blueprint, request, redirect, url_for, flash, abort
 from sqlalchemy import select
 
 from models import Event, Purchase, Payment
-from services.payments.pagseguro import create_checkout_redirect
+from app_services.payments.pagseguro import create_checkout_redirect
 
 
 bp = Blueprint("purchase", __name__)

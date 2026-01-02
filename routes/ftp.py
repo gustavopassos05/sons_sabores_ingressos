@@ -3,7 +3,7 @@ from flask import Blueprint, redirect, url_for, flash, abort
 from sqlalchemy import select
 
 from models import Purchase, Ticket
-from services.ftp_uploader import upload_file
+from app_services.ftp_uploader import upload_file
 from app import db
 
 bp = Blueprint("ftp", __name__)

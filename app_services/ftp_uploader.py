@@ -1,4 +1,4 @@
-# services/ftp_uploader.py
+# app_services/ftp_uploader.py
 import os
 from ftplib import FTP, FTP_TLS
 from pathlib import Path

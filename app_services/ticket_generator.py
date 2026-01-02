@@ -1,4 +1,4 @@
-# services/ticket_generator.py
+# app_services/ticket_generator.py
 import re
 import unicodedata
 from io import BytesIO

@@ -1,4 +1,4 @@
-# services/payments/pagseguro.py
+# app_services/payments/pagseguro.py
 import os
 import xml.etree.ElementTree as ET
 from typing import Tuple, Optional
