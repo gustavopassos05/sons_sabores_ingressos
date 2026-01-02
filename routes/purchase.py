@@ -30,7 +30,7 @@ def buy(event_slug: str):
 def buy_post(event_slug: str):
     base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
     if not base_url:
-        raise RuntimeError("BASE_URL não configurado no .env (ex: https://seu-app.onrender.com)")
+        raise RuntimeError("BASE_URL não configurado no .env.example (ex: https://seu-app.onrender.com)")
 
     show_name = (request.form.get("show_name") or "").strip()
     if not show_name:

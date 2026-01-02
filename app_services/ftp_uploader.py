@@ -8,7 +8,7 @@ from typing import Tuple, Dict, Any
 def _cfg():
     hosts = [h.strip() for h in (os.getenv("FTP_HOSTS") or "").split(",") if h.strip()]
     if not hosts:
-        raise RuntimeError("FTP_HOSTS não configurado no .env")
+        raise RuntimeError("FTP_HOSTS não configurado no .env.example")
 
     return {
         "hosts": hosts,

@@ -7,6 +7,11 @@ from models import Purchase, Ticket
 
 bp_tickets = Blueprint("tickets", __name__)
 
+@bp_tickets.get("/admin")
+def admin_tickets():
+    # depois você coloca login aqui
+    return render_template("admin_tickets.html")
+
 @bp_tickets.get("/purchase/<token>")
 def purchase_public(token: str):
     with db() as s:
