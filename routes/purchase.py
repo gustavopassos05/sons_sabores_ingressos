@@ -1,6 +1,7 @@
 import os
 import secrets
 from datetime import datetime
+from db import db
 
 from flask import (
     Blueprint, abort, flash, redirect, render_template, request, url_for
@@ -8,7 +9,6 @@ from flask import (
 from sqlalchemy import select
 
 from models import Event, Purchase, Payment
-from services_utils import db  # <- ajuste se sua função db() estiver em outro lugar
 
 # ✅ IMPORT DO PAGSEGURO/PAGBANK (ajuste conforme seu arquivo real)
 # Se você ainda estiver usando PIX PagBank:
