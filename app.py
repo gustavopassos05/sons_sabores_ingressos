@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from models import Base
 from routes.purchase import bp_purchase
+
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
 

@@ -11,7 +11,7 @@ from models import Event, Purchase, Payment
 from app_services.payments.pagseguro import create_checkout_redirect
 
 
-bp = Blueprint("purchase", __name__)
+bp_purchase = Blueprint("purchase", __name__)
 
 
 def _digits(s: str) -> str:

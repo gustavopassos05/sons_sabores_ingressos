@@ -6,7 +6,7 @@ from models import Purchase, Ticket
 from app_services.ftp_uploader import upload_file
 from app import db
 
-bp = Blueprint("ftp", __name__)
+bp_ftp = Blueprint("ftp", __name__)
 
 
 @bp.post("/admin/ftp/push/<purchase_token>")

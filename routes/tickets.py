@@ -5,7 +5,7 @@ from sqlalchemy import select
 from models import Purchase, Ticket
 from app import db
 
-bp = Blueprint("tickets", __name__)
+bp_tickets = Blueprint("tickets", __name__)
 
 
 @bp.get("/purchase/<token>")
