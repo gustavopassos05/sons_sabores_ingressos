@@ -139,19 +139,6 @@ def pay_pix(payment_id: int):
         event=ev,
     )
 
-# se você tem uma função para consultar status no PagBank, importe aqui:
-from pagbank import get_order_status  # você cria/ajusta essa função
-
 @bp_purchase.post("/pay/<int:payment_id>/refresh")
 def pay_refresh(payment_id: int):
-    # Recarrega o status no banco e volta pra tela do Pix
-    with db() as s:
-        payment = s.get(Payment, payment_id)
-        if not payment:
-            abort(404)
-
-        purchase = s.get(Purchase, payment.purchase_id) if payment.purchase_id else None
-        if purchase and (purchase.status == "paid" or payment.status == "paid"):
-            return redirect(url_for("tickets.purchase_public", token=purchase.token))
-
     return redirect(url_for("purchase.pay_pix", payment_id=payment_id))

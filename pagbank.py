@@ -15,7 +15,7 @@ def pagbank_base_url() -> str:
 def _auth_headers() -> dict:
     token = os.getenv("PAGBANK_TOKEN", "").strip()
     if not token:
-        raise RuntimeError("PAGBANK_TOKEN não configurado no .env.example")
+        raise RuntimeError("PAGBANK_TOKEN não configurado no .env")
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",

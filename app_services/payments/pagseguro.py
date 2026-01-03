@@ -29,7 +29,7 @@ def _credentials() -> Tuple[str, str]:
     email = (os.getenv("PAGSEGURO_EMAIL") or "").strip()
     token = (os.getenv("PAGSEGURO_TOKEN") or "").strip()
     if not email or not token:
-        raise RuntimeError("PAGSEGURO_EMAIL e PAGSEGURO_TOKEN precisam estar no .env.example")
+        raise RuntimeError("PAGSEGURO_EMAIL e PAGSEGURO_TOKEN precisam estar no .env")
     return email, token
 
 
