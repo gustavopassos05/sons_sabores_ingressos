@@ -8,8 +8,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
-      - key: STORAGE_DIR
-        value: /tmp/sons_sabores_ingressos_storage
+      - key: BASE_URL
+        value: https://borogodo-sons-sabores-ingressos.onrender.com
 
 
 
