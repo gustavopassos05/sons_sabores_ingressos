@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
+  <h2 class="text-xl font-semibold mb-2">Pagamento com cartão</h2>
+  <p class="text-sm text-zinc-600 mb-4">Show: {{ purchase.show_name }} · Comprador: {{ purchase.buyer_name }}</p>
+
+  <form method="post" action="{{ url_for('purchase.pay_card_post', payment_id=payment.id) }}" class="space-y-3">
+    <input class="w-full rounded-xl border p-3" name="card_name" placeholder="Nome no cartão" required>
+    <input class="w-full rounded-xl border p-3" name="card_number" placeholder="Número do cartão" required>
+    <div class="grid grid-cols-2 gap-3">
+      <input class="w-full rounded-xl border p-3" name="card_exp" placeholder="MM/AA" required>
+      <input class="w-full rounded-xl border p-3" name="card_cvv" placeholder="CVV" required>
+    </div>
+    <button class="w-full rounded-xl bg-black text-white py-3 font-medium">Pagar</button>
+  </form>
+</div>
+{% endblock %}
