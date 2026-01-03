@@ -1,7 +1,6 @@
 # db.py
 import os
 from contextlib import contextmanager
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -19,18 +18,16 @@ SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
     autocommit=False,
-    expire_on_commit=False,  # ✅ importante
+    expire_on_commit=False,  # ✅ ESSENCIAL
 )
-
-
 
 @contextmanager
 def db():
-    """Uso: with db() as s: ..."""
     s = SessionLocal()
     try:
         yield s
-        s.commit()
+        if s.new or s.dirty or s.deleted:
+            s.commit()
     except Exception:
         s.rollback()
         raise
