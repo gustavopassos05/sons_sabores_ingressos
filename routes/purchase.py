@@ -138,3 +138,36 @@ def pay_pix(payment_id: int):
         purchase=purchase,
         event=ev,
     )
+
+# se você tem uma função para consultar status no PagBank, importe aqui:
+from pagbank import get_order_status  # você cria/ajusta essa função
+
+@bp_purchase.get("/pay/<int:payment_id>/refresh")
+def pay_refresh(payment_id: int):
+    with db() as s:
+        p = s.get(Payment, payment_id)
+        if not p:
+            abort(404)
+
+        purchase = s.get(Purchase, p.purchase_id) if p.purchase_id else None
+        if not purchase:
+            abort(404)
+
+        # consulta o status no PagBank pelo external_id (order_id)
+        try:
+            status = get_order_status(p.external_id)  # retorna "PAID"/etc (ajuste)
+        except Exception as e:
+            flash(f"Não consegui consultar o pagamento agora. Tente novamente. ({e})", "warning")
+            return redirect(url_for("purchase.pay_pix", payment_id=payment_id))
+
+        # ajuste os nomes conforme sua regra real:
+        if status in ("PAID", "paid", "AUTHORIZED"):
+            p.status = "paid"
+            purchase.status = "paid"
+            s.add(p)
+            s.add(purchase)
+            # aqui você chamaria finalize_purchase e FTP depois, quando for implementar
+            # app.extensions["finalize_purchase"](purchase.id)
+            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+
+    return redirect(url_for("purchase.pay_pix", payment_id=payment_id))

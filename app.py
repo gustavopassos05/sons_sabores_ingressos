@@ -10,6 +10,7 @@ from db import engine    # vamos usar o engine do db.py
 from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
+from routes.webhooks import bp_webhooks
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
 
@@ -52,6 +53,7 @@ def create_app() -> Flask:
     app.register_blueprint(bp_purchase)
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)
+    app.register_blueprint(bp_webhooks)
 
     return app
 

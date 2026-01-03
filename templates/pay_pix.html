@@ -90,7 +90,7 @@
         <textarea class="w-full rounded-xl border p-3 text-sm mt-2" rows="4" readonly>{{ payment.qr_text }}</textarea>
       {% endif %}
 
-      <form method="post" action="{{ url_for('pay_refresh', payment_id=payment.id) }}" class="mt-4">
+      <form method="post" action="{{ url_for('purchase.pay_refresh', payment_id=payment.id)}}" class="mt-4">
         <button class="w-full rounded-xl border py-3 font-medium">
           Já paguei — atualizar status
         </button>
