@@ -11,7 +11,7 @@ from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
 from routes.webhooks import bp_webhooks
-from finalize_purchase import finalize_purchase_factory
+from app_services.finalize_purchase import finalize_purchase_factory
 
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
