@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow p-6 text-center">
+
+  <h2 class="text-xl font-semibold mb-2">Pagamento em processamento</h2>
+
+  {% if payment and payment.status == "paid" %}
+    <p class="text-green-700 font-medium">
+      Pagamento confirmado ✅
+    </p>
+
+    <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
+       class="mt-4 inline-block rounded-xl bg-black text-white px-6 py-3">
+      Ver ingressos
+    </a>
+
+  {% else %}
+    <p class="text-zinc-600">
+      Seu pagamento está sendo processado.<br>
+      Assim que for confirmado, seus ingressos serão liberados automaticamente.
+    </p>
+
+    <p class="text-xs text-zinc-500 mt-3">
+      Você pode fechar esta página com segurança.
+    </p>
+  {% endif %}
+
+</div>
+{% endblock %}
