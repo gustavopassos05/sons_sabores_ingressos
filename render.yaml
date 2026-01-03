@@ -11,7 +11,12 @@ services:
       - key: BASE_URL
         value: https://borogodo-sons-sabores-ingressos.onrender.com
 
-
+      - key: PAGBANK_ENV
+        value: sandbox
+      - key: PAGBANK_MERCHANT_EMAIL
+        value: gustavopassos05@gmail.com
+      - key: PAGBANK_TOKEN
+        sync: false
 
       - key: SECRET_KEY
         sync: false
