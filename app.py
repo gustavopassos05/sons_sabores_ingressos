@@ -11,6 +11,8 @@ from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
 from routes.webhooks import bp_webhooks
+from finalize_purchase import finalize_purchase_factory
+
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
 
@@ -54,6 +56,7 @@ def create_app() -> Flask:
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)
     app.register_blueprint(bp_webhooks)
+    app.extensions["finalize_purchase"] = finalize_purchase_factory(app)
 
     return app
 
