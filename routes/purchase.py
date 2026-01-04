@@ -1,3 +1,4 @@
+# routes/purchase.py
 import os
 import secrets
 from datetime import datetime
@@ -8,11 +9,8 @@ from sqlalchemy import select
 
 from models import Event, Purchase, Payment
 from pagbank import create_pix_order
-from app_services.payments.pagseguro import create_checkout_redirect
-
 
 bp_purchase = Blueprint("purchase", __name__)
-
 
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
@@ -56,7 +54,6 @@ def buy_post(event_slug: str):
     price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
     total_people = 1 + len(guests_lines)
     total_cents = price_cents_unit * total_people
-    total_brl = total_cents / 100
 
     exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
     purchase_token = secrets.token_urlsafe(24)
@@ -82,73 +79,45 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # -----------------------------
-        # PIX (PagBank API) -> sua tela pay_pix.html
-        # -----------------------------
-        if pay_method == "pix":
-            notification_url = f"{base_url}/webhooks/pagbank"
+        # ✅ PagBank webhook (corrigido)
+        notification_url = f"{base_url}/webhooks/pagbank"
 
-            order_id, qr_text, qr_b64, expires_at = create_pix_order(
-                reference_id=f"purchase-{purchase.id}",
-                buyer_name=buyer_name,
-                buyer_email=buyer_email,
-                buyer_tax_id=buyer_tax_id_digits,
-                buyer_phone_digits=buyer_phone,
-                item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-                amount_cents=total_cents,
-                notification_url=notification_url,
-                expires_minutes=exp_min,
-            )
-
-            payment = Payment(
-                purchase_id=purchase.id,
-                provider="pagbank",
-                amount_cents=total_cents,
-                currency="BRL",
-                status="pending",
-                external_id=order_id,
-                qr_text=qr_text,
-                qr_image_base64=qr_b64,
-                expires_at=expires_at.replace(tzinfo=None) if expires_at else None,
-                paid_at=None,
-            )
-            s.add(payment)
-            s.commit()
-
-            return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
+        # Por enquanto: Pix OK; Cartão ainda não é redirect simples na API
+        if pay_method == "card":
+            flash("Cartão ainda não está habilitado. Selecione Pix por enquanto.", "warning")
+            return redirect(url_for("purchase.buy", event_slug=event_slug))
 
         # -----------------------------
-        # CARTÃO (Checkout Redirect PagSeguro/PagBank) -> redireciona pra página do provedor
+        # PIX (PagBank API) -> pay_pix.html
         # -----------------------------
-        redirect_url = f"{base_url}/pay/return/{purchase.token}"
-        notification_url = f"{base_url}/webhooks/pagseguro"
-
-        checkout_code, checkout_url = create_checkout_redirect(
-            reference=f"purchase-{purchase.id}",
-            item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_brl=total_brl,
+        order_id, qr_text, qr_b64, expires_at = create_pix_order(
+            reference_id=f"purchase-{purchase.id}",
             buyer_name=buyer_name,
             buyer_email=buyer_email,
-            buyer_phone=buyer_phone,
-            buyer_cpf=buyer_cpf,
-            redirect_url=redirect_url,
+            buyer_tax_id=buyer_tax_id_digits,
+            buyer_phone_digits=buyer_phone,
+            item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+            amount_cents=total_cents,
             notification_url=notification_url,
+            expires_minutes=exp_min,
         )
 
         payment = Payment(
             purchase_id=purchase.id,
-            provider="pagbank_checkout",
+            provider="pagbank",
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=checkout_code,
+            external_id=order_id,
+            qr_text=qr_text,
+            qr_image_base64=qr_b64,
+            expires_at=expires_at.replace(tzinfo=None) if expires_at else None,
             paid_at=None,
         )
         s.add(payment)
         s.commit()
 
-    return redirect(checkout_url)
-
+        return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
 
 @bp_purchase.get("/pay/<int:payment_id>")
 def pay_pix(payment_id: int):
@@ -177,6 +146,7 @@ def pay_pix(payment_id: int):
 @bp_purchase.post("/pay/<int:payment_id>/refresh")
 def pay_refresh(payment_id: int):
     return redirect(url_for("purchase.pay_pix", payment_id=payment_id))
+
 
 @bp_purchase.get("/pay/<int:payment_id>/card")
 def pay_card(payment_id: int):
