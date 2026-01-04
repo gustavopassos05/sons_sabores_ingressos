@@ -137,7 +137,7 @@ def buy_post(event_slug: str):
 
         payment = Payment(
             purchase_id=purchase.id,
-            provider="pagseguro",
+            provider="pagbank_checkout",
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
