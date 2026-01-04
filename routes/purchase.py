@@ -56,6 +56,7 @@ def buy_post(event_slug: str):
     price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
     total_people = 1 + len(guests_lines)
     total_cents = price_cents_unit * total_people
+    total_brl = total_cents / 100
 
     exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
     purchase_token = secrets.token_urlsafe(24)
@@ -81,38 +82,36 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # ✅ Webhook PagBank
-        notification_url = f"{base_url}/webhooks/pagbank"
+        # ✅ Webhook do PagBank (PIX API nova)
+        pagbank_notification_url = f"{base_url}/webhooks/pagbank"
+
+        # ✅ Webhook do Checkout Redirect (cartão) - pode ser outro endpoint
+        checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
+        redirect_url = f"{base_url}/pay/return/{purchase.token}"
 
         # -----------------------------
-        # CARTÃO (PagBank Checkout -> página do provedor com Pix/Cartão)
+        # CARTÃO (Checkout Redirect v2)
         # -----------------------------
         if pay_method == "card":
-            # cria checkout no PagBank (redirect)
-            # OBS: você precisa ter criado app_services/payments/pagbank_checkout.py
-            from app_services.payments.pagbank_checkout import create_checkout
-
-            return_url = f"{base_url}/pay/return/{purchase.token}"
-
-            checkout_id, checkout_url = create_checkout(
-                reference_id=f"purchase-{purchase.id}",
+            checkout_code, checkout_url = create_checkout_redirect(
+                reference=f"purchase-{purchase.id}",
+                item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+                amount_brl=total_brl,
                 buyer_name=buyer_name,
                 buyer_email=buyer_email,
-                buyer_tax_id=buyer_cpf,     # deixa com máscara que o helper limpa
-                buyer_phone=buyer_phone,   # helper normaliza
-                item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-                amount_cents=total_cents,
-                return_url=return_url,
-                notification_url=notification_url,
+                buyer_phone=buyer_phone,
+                buyer_cpf=buyer_cpf,
+                redirect_url=redirect_url,
+                notification_url=checkout_notification_url,
             )
 
             payment = Payment(
                 purchase_id=purchase.id,
-                provider="pagbank",
+                provider="pagbank_checkout",
                 amount_cents=total_cents,
                 currency="BRL",
                 status="pending",
-                external_id=checkout_id,  # id do checkout
+                external_id=checkout_code,
                 paid_at=None,
             )
             s.add(payment)
@@ -121,7 +120,7 @@ def buy_post(event_slug: str):
             return redirect(checkout_url)
 
         # -----------------------------
-        # PIX (PagBank API) -> pay_pix.html
+        # PIX (PagBank Orders API)
         # -----------------------------
         order_id, qr_text, qr_b64, expires_at = create_pix_order(
             reference_id=f"purchase-{purchase.id}",
@@ -131,7 +130,7 @@ def buy_post(event_slug: str):
             buyer_phone_digits=buyer_phone,
             item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
             amount_cents=total_cents,
-            notification_url=notification_url,
+            notification_url=pagbank_notification_url,
             expires_minutes=exp_min,
         )
 
@@ -141,7 +140,7 @@ def buy_post(event_slug: str):
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=order_id,  # id da order Pix
+            external_id=order_id,
             qr_text=qr_text,
             qr_image_base64=qr_b64,
             expires_at=expires_at.replace(tzinfo=None) if expires_at else None,
@@ -151,7 +150,6 @@ def buy_post(event_slug: str):
         s.commit()
 
         return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
-
 @bp_purchase.get("/pay/<int:payment_id>")
 def pay_pix(payment_id: int):
     with db() as s:
