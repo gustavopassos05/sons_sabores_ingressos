@@ -113,7 +113,7 @@ def buy_post(event_slug: str):
                 amount_cents=total_cents,
                 currency="BRL",
                 status="pending",
-                external_id=checkout_code,
+                external_id=checkout_id,
                 paid_at=None,
             )
             s.add(payment)
