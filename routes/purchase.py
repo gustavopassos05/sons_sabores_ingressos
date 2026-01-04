@@ -9,8 +9,7 @@ from sqlalchemy import select
 
 from models import Event, Purchase, Payment
 from pagbank import create_pix_order
-from app_services.payments.pagbank_checkout import create_checkout_redirect
-
+from app_services.payments.pagbank_checkout import create_checkout
 
 bp_purchase = Blueprint("purchase", __name__)
 
