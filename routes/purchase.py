@@ -93,7 +93,7 @@ def buy_post(event_slug: str):
         # CARTÃO (Checkout Redirect v2)
         # -----------------------------
         if pay_method == "card":
-            checkout_code, checkout_url = create_checkout_redirect(
+            checkout_id, checkout_url = create_checkout_redirect(
                 reference=f"purchase-{purchase.id}",
                 item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
                 amount_brl=total_brl,
@@ -102,8 +102,10 @@ def buy_post(event_slug: str):
                 buyer_phone=buyer_phone,
                 buyer_cpf=buyer_cpf,
                 redirect_url=redirect_url,
-                notification_url=checkout_notification_url,
+                payment_notification_url=checkout_notification_url,   # <- PAID etc.
+                checkout_notification_url=None,                       # opcional (EXPIRED)
             )
+
 
             payment = Payment(
                 purchase_id=purchase.id,

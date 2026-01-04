@@ -1,8 +1,6 @@
 # app_services/payments/pagbank_checkout.py
 import os
-import xml.etree.ElementTree as ET
-from typing import Tuple, Optional
-
+from typing import Optional, Tuple
 import requests
 
 
@@ -12,26 +10,17 @@ def _env() -> str:
 
 def checkout_post_url() -> str:
     return (
-        "https://ws.sandbox.pagseguro.uol.com.br/v2/checkout"
+        "https://sandbox.api.pagseguro.com/checkouts"
         if _env() == "sandbox"
-        else "https://ws.pagseguro.uol.com.br/v2/checkout"
+        else "https://api.pagseguro.com/checkouts"
     )
 
 
-def checkout_redirect_base() -> str:
-    return (
-        "https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html"
-        if _env() == "sandbox"
-        else "https://pagseguro.uol.com.br/v2/checkout/payment.html"
-    )
-
-
-def _credentials() -> Tuple[str, str]:
-    email = (os.getenv("PAGBANK_CHECKOUT_EMAIL") or "").strip()
+def _bearer_token() -> str:
     token = (os.getenv("PAGBANK_CHECKOUT_TOKEN") or "").strip()
-    if not email or not token:
-        raise RuntimeError("Configure PAGBANK_CHECKOUT_EMAIL e PAGBANK_CHECKOUT_TOKEN nas env vars do Render.")
-    return email, token
+    if not token:
+        raise RuntimeError("Configure PAGBANK_CHECKOUT_TOKEN (Bearer) nas env vars do Render.")
+    return token
 
 
 def _digits(s: str) -> str:
@@ -40,7 +29,7 @@ def _digits(s: str) -> str:
 
 def create_checkout_redirect(
     *,
-    reference: str,
+    reference: str,  # ex: "purchase-123"
     item_description: str,
     amount_brl: float,
     buyer_name: str,
@@ -48,60 +37,63 @@ def create_checkout_redirect(
     buyer_phone: str,
     buyer_cpf: str,
     redirect_url: str,
-    notification_url: Optional[str] = None,
+    payment_notification_url: Optional[str] = None,  # <-- transacional (PAID etc.)
+    checkout_notification_url: Optional[str] = None,  # <-- checkout (EXPIRED etc.)
 ) -> Tuple[str, str]:
-    email, token = _credentials()
-    amount_brl = float(amount_brl)
+    token = _bearer_token()
 
-    phone_digits = _digits(buyer_phone)
-    area = phone_digits[:2] if len(phone_digits) >= 10 else "31"
-    number = (
-        phone_digits[2:11]
-        if len(phone_digits) >= 10
-        else (phone_digits[-9:] if len(phone_digits) >= 9 else "999999999")
-    )
+    phone = _digits(buyer_phone)
+    ddd = phone[:2] if len(phone) >= 10 else "31"
+    number = phone[2:11] if len(phone) >= 10 else (phone[-9:] if len(phone) >= 9 else "999999999")
 
-    cpf_digits = _digits(buyer_cpf)
-    if _env() == "sandbox" and len(cpf_digits) != 11:
-        cpf_digits = "12345678909"
+    cpf = _digits(buyer_cpf)
+    if _env() == "sandbox" and len(cpf) != 11:
+        cpf = "12345678909"
 
-    # ✅ payload SEMPRE é criado
+    unit_amount = int(round(float(amount_brl) * 100))
+    if unit_amount <= 0:
+        raise RuntimeError("amount_brl inválido (<= 0).")
+
     payload = {
-        "email": email,
-        "token": token,
-        "currency": "BRL",
-        "reference": reference[:200],
-        "itemId1": "1",
-        "itemDescription1": item_description[:100],
-        "itemQuantity1": "1",
-        "itemAmount1": f"{amount_brl:.2f}",
-        "senderName": buyer_name[:50],
-        "senderEmail": (buyer_email or "").strip()[:60] or "comprador-teste@exemplo.com",
-        "senderAreaCode": area,
-        "senderPhone": number,
-        "senderCPF": cpf_digits,
-        "redirectURL": redirect_url,
+        "reference_id": reference[:200],
+        "customer": {
+            "name": buyer_name[:120],
+            "email": (buyer_email or "").strip()[:120] or "comprador-teste@exemplo.com",
+            "tax_id": cpf,
+            "phone": {"country": "+55", "area": ddd, "number": number},
+        },
+        "items": [
+            {"reference_id": "1", "name": item_description[:100], "quantity": 1, "unit_amount": unit_amount}
+        ],
+        "redirect_url": redirect_url,
     }
 
-    print("[CHECKOUT] env=", _env())
-    print("[CHECKOUT] email=", email)
-    print("[CHECKOUT] token_len=", len(token))
+    # docs: payment_notification_urls e notification_urls são independentes :contentReference[oaicite:2]{index=2}
+    if payment_notification_url:
+        payload["payment_notification_urls"] = [payment_notification_url]
+    if checkout_notification_url:
+        payload["notification_urls"] = [checkout_notification_url]
 
-    if notification_url:
-        payload["notificationURL"] = notification_url
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
-    r = requests.post(checkout_post_url(), data=payload, timeout=30)
+    r = requests.post(checkout_post_url(), json=payload, headers=headers, timeout=30)
     if not r.ok:
         raise RuntimeError(f"Checkout Redirect erro {r.status_code}: {r.text}")
 
-    try:
-        root = ET.fromstring(r.text.strip())
-        code = (root.findtext("code") or "").strip()
-    except Exception:
-        code = ""
+    data = r.json()
 
-    if not code:
-        raise RuntimeError(f"Checkout Redirect não retornou code. Resposta: {r.text}")
+    pay_url = ""
+    for link in data.get("links", []):
+        if (link.get("rel") or "").upper() == "PAY" and link.get("href"):
+            pay_url = link["href"]
+            break
 
-    url = f"{checkout_redirect_base()}?code={code}"
-    return code, url
+    checkout_id = data.get("id") or ""
+    if not checkout_id or not pay_url:
+        raise RuntimeError(f"Checkout criado mas resposta inesperada: {data}")
+
+    return checkout_id, pay_url

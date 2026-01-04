@@ -74,3 +74,40 @@ def pagbank_webhook():
         return {"ok": True}
 
     return {"ok": True}
+
+@bp_webhooks.post("/webhooks/pagbank-checkout")
+def pagbank_checkout_webhook():
+    payload = request.json or {}
+
+    # payload exemplo tem: id, reference_id, status :contentReference[oaicite:3]{index=3}
+    reference_id = (payload.get("reference_id") or "").strip()
+    status = (payload.get("status") or "").strip().upper()
+
+    # no checkout, status transacional pode ser PAID, WAITING, DECLINED... :contentReference[oaicite:4]{index=4}
+    if not reference_id.startswith("purchase-") or not status:
+        return {"ok": True}
+
+    if status != "PAID":
+        return {"ok": True}
+
+    try:
+        purchase_id = int(reference_id.split("-", 1)[1])
+    except Exception:
+        abort(400)
+
+    with db() as s:
+        purchase = s.get(Purchase, purchase_id)
+        if not purchase:
+            abort(404)
+
+        payment = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.provider == "pagbank_checkout")
+            .order_by(Payment.id.desc())
+        )
+        if not payment:
+            abort(404)
+
+        _mark_paid_and_finalize(purchase, payment)
+
+    return {"ok": True}
