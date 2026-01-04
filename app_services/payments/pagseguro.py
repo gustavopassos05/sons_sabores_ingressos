@@ -8,7 +8,7 @@ import requests
 
 def _env() -> str:
     # sandbox | production
-    return (os.getenv("PAGSEGURO_ENV", "sandbox") or "sandbox").lower().strip()
+    return (os.getenv("PAGBANK_ENV", "sandbox") or "sandbox").lower().strip()
 
 
 def checkout_post_url() -> str:
