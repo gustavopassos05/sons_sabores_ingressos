@@ -13,6 +13,9 @@ from routes.ftp import bp_ftp
 from routes.webhooks import bp_webhooks
 from app_services.finalize_purchase import finalize_purchase_factory
 from app_services.payments.pagseguro_notify import bp_pagseguro_notify
+from app_services.finalize_purchase import finalize_purchase_factory
+finalize_purchase_factory(app)
+
 
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
@@ -58,6 +61,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp_webhooks)
     app.extensions["finalize_purchase"] = finalize_purchase_factory(app)
     app.register_blueprint(bp_pagseguro_notify)
+    from app_services.finalize_purchase import finalize_purchase_factory
+    finalize_purchase_factory(app)
 
 
     return app
