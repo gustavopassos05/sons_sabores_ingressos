@@ -34,8 +34,6 @@ def buy_post(event_slug: str):
     if not base_url:
         raise RuntimeError("BASE_URL não configurado")
 
-    pay_method = (request.form.get("pay_method") or "pix").lower()
-
     show_name = (request.form.get("show_name") or "").strip()
     buyer_name = (request.form.get("buyer_name") or "").strip()
     buyer_cpf = (request.form.get("buyer_cpf") or "").strip()
@@ -77,8 +75,8 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # 🔁 URLs PagSeguro
-        redirect_url = f"{base_url}/purchase/{purchase.token}"
+        # ✅ URLs PagSeguro
+        redirect_url = f"{base_url}/pay/return/{purchase.token}"
         notification_url = f"{base_url}/webhooks/pagseguro"
 
         checkout_code, checkout_url = create_checkout_redirect(
@@ -99,13 +97,13 @@ def buy_post(event_slug: str):
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=checkout_code,
+            external_id=checkout_code,  # checkout code
         )
         s.add(payment)
         s.commit()
 
-    # 🚀 REDIRECIONA PARA PAGSEGURO
     return redirect(checkout_url)
+
 @bp_purchase.get("/pay/<int:payment_id>")
 def pay_pix(payment_id: int):
     with db() as s:
@@ -157,12 +155,12 @@ def pay_return(token: str):
             abort(404)
 
         # pega último pagamento
-        payment = (
-            s.query(Payment)
-            .filter(Payment.purchase_id == purchase.id)
+        payment = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
             .order_by(Payment.id.desc())
-            .first()
         )
+
 
     # ⚠️ NÃO FINALIZA AQUI
     # Só mostra status

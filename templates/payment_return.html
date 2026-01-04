@@ -14,15 +14,42 @@
       Ver ingressos
     </a>
 
+    <p class="text-xs text-zinc-500 mt-3">
+      Redirecionando automaticamente…
+    </p>
+
+    <script>
+      setTimeout(() => {
+        window.location.href = "{{ url_for('tickets.purchase_public', token=purchase.token) }}";
+      }, 1500);
+    </script>
+
   {% else %}
     <p class="text-zinc-600">
       Seu pagamento está sendo processado.<br>
       Assim que for confirmado, seus ingressos serão liberados automaticamente.
     </p>
 
+    <div class="mt-5 flex flex-col gap-2 items-center">
+      <button type="button"
+              onclick="window.location.reload()"
+              class="rounded-xl border px-5 py-2 text-sm">
+        Atualizar agora
+      </button>
+
+      <p class="text-xs text-zinc-500">
+        Verificando automaticamente…
+      </p>
+    </div>
+
     <p class="text-xs text-zinc-500 mt-3">
       Você pode fechar esta página com segurança.
     </p>
+
+    <script>
+      // tenta de novo a cada 5s
+      setTimeout(() => window.location.reload(), 5000);
+    </script>
   {% endif %}
 
 </div>
