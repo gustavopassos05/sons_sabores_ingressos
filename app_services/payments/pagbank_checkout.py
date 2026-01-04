@@ -101,6 +101,9 @@ def create_checkout_redirect(
 
             "redirectURL": redirect_url,
         }
+    print("[CHECKOUT] env=", _env())
+    print("[CHECKOUT] email=", email)
+    print("[CHECKOUT] token_len=", len(token))
 
 
     if notification_url:
