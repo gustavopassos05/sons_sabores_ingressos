@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from db import db
 from models import Payment, Purchase
-from app_services.finalize_purchase import finalize_purchase
+
 
 bp_pagseguro_notify = Blueprint("pagseguro_notify", __name__)
 
