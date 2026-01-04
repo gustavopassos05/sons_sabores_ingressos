@@ -11,7 +11,7 @@ from app_services import ticket_generator
 
 
 
-def finalize_purchase(purchase_id: int):
+def finalize_purchase_factory(purchase_id: int):
     """
     Finaliza uma compra paga:
     - Gera ingressos (1 por pessoa)
