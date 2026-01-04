@@ -6,8 +6,9 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Ticket
-from app_services.ticket_generator import generate_ticket_images
 from app_services.ftp_uploader import upload_file
+from app_services import ticket_generator
+
 
 
 def finalize_purchase(purchase_id: int):
