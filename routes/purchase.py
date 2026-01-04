@@ -28,7 +28,6 @@ def buy(event_slug: str):
         form={},  # <-- aqui
     )
 
-
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
     base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
@@ -83,13 +82,44 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # ✅ PagBank webhook (corrigido)
+        # ✅ Webhook PagBank
         notification_url = f"{base_url}/webhooks/pagbank"
 
-        # Por enquanto: Pix OK; Cartão ainda não é redirect simples na API
+        # -----------------------------
+        # CARTÃO (PagBank Checkout -> página do provedor com Pix/Cartão)
+        # -----------------------------
         if pay_method == "card":
-            flash("Cartão ainda não está habilitado. Selecione Pix por enquanto.", "warning")
-            return redirect(url_for("purchase.buy", event_slug=event_slug))
+            # cria checkout no PagBank (redirect)
+            # OBS: você precisa ter criado app_services/payments/pagbank_checkout.py
+            from app_services.payments.pagbank_checkout import create_checkout
+
+            return_url = f"{base_url}/pay/return/{purchase.token}"
+
+            checkout_id, checkout_url = create_checkout(
+                reference_id=f"purchase-{purchase.id}",
+                buyer_name=buyer_name,
+                buyer_email=buyer_email,
+                buyer_tax_id=buyer_cpf,     # deixa com máscara que o helper limpa
+                buyer_phone=buyer_phone,   # helper normaliza
+                item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+                amount_cents=total_cents,
+                return_url=return_url,
+                notification_url=notification_url,
+            )
+
+            payment = Payment(
+                purchase_id=purchase.id,
+                provider="pagbank",
+                amount_cents=total_cents,
+                currency="BRL",
+                status="pending",
+                external_id=checkout_id,  # id do checkout
+                paid_at=None,
+            )
+            s.add(payment)
+            s.commit()
+
+            return redirect(checkout_url)
 
         # -----------------------------
         # PIX (PagBank API) -> pay_pix.html
@@ -112,7 +142,7 @@ def buy_post(event_slug: str):
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=order_id,
+            external_id=order_id,  # id da order Pix
             qr_text=qr_text,
             qr_image_base64=qr_b64,
             expires_at=expires_at.replace(tzinfo=None) if expires_at else None,
