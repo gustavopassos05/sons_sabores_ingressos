@@ -79,27 +79,29 @@ def create_checkout_redirect(
     if _env() == "sandbox" and len(cpf_digits) != 11:
         cpf_digits = "12345678909"
 
-    payload = {
-        # ✅ autenticação correta do v2 checkout
-        "email": email,
-        "token": token,
+        email, token = _credentials()
 
-        "currency": "BRL",
-        "reference": reference[:200],
+        payload = {
+            "email": email,
+            "token": token,
 
-        "itemId1": "1",
-        "itemDescription1": item_description[:100],
-        "itemQuantity1": "1",
-        "itemAmount1": f"{amount_brl:.2f}",
+            "currency": "BRL",
+            "reference": reference[:200],
 
-        "senderName": buyer_name[:50],
-        "senderEmail": (buyer_email or "").strip()[:60] or "comprador-teste@exemplo.com",
-        "senderAreaCode": area,
-        "senderPhone": number,
-        "senderCPF": cpf_digits,
+            "itemId1": "1",
+            "itemDescription1": item_description[:100],
+            "itemQuantity1": "1",
+            "itemAmount1": f"{amount_brl:.2f}",
 
-        "redirectURL": redirect_url,
-    }
+            "senderName": buyer_name[:50],
+            "senderEmail": (buyer_email or "").strip()[:60] or "comprador-teste@exemplo.com",
+            "senderAreaCode": area,
+            "senderPhone": number,
+            "senderCPF": cpf_digits,
+
+            "redirectURL": redirect_url,
+        }
+
 
     if notification_url:
         payload["notificationURL"] = notification_url
