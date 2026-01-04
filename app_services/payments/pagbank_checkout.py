@@ -11,7 +11,6 @@ def _env() -> str:
 
 
 def checkout_post_url() -> str:
-    # v2 checkout (redirect)
     return (
         "https://ws.sandbox.pagseguro.uol.com.br/v2/checkout"
         if _env() == "sandbox"
@@ -28,17 +27,10 @@ def checkout_redirect_base() -> str:
 
 
 def _credentials() -> Tuple[str, str]:
-    """
-    Importante:
-    - PIX usa PAGBANK_TOKEN (Bearer) na API nova.
-    - Checkout Redirect usa outro token (clássico).
-    """
     email = (os.getenv("PAGBANK_CHECKOUT_EMAIL") or "").strip()
     token = (os.getenv("PAGBANK_CHECKOUT_TOKEN") or "").strip()
     if not email or not token:
-        raise RuntimeError(
-            "Configure PAGBANK_CHECKOUT_EMAIL e PAGBANK_CHECKOUT_TOKEN nas env vars do Render."
-        )
+        raise RuntimeError("Configure PAGBANK_CHECKOUT_EMAIL e PAGBANK_CHECKOUT_TOKEN nas env vars do Render.")
     return email, token
 
 
@@ -58,13 +50,7 @@ def create_checkout_redirect(
     redirect_url: str,
     notification_url: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """
-    Retorna:
-      (checkout_code, redirect_url_pagseguro)
-    """
     email, token = _credentials()
-
-    # blindagem
     amount_brl = float(amount_brl)
 
     phone_digits = _digits(buyer_phone)
@@ -79,32 +65,27 @@ def create_checkout_redirect(
     if _env() == "sandbox" and len(cpf_digits) != 11:
         cpf_digits = "12345678909"
 
-        email, token = _credentials()
+    # ✅ payload SEMPRE é criado
+    payload = {
+        "email": email,
+        "token": token,
+        "currency": "BRL",
+        "reference": reference[:200],
+        "itemId1": "1",
+        "itemDescription1": item_description[:100],
+        "itemQuantity1": "1",
+        "itemAmount1": f"{amount_brl:.2f}",
+        "senderName": buyer_name[:50],
+        "senderEmail": (buyer_email or "").strip()[:60] or "comprador-teste@exemplo.com",
+        "senderAreaCode": area,
+        "senderPhone": number,
+        "senderCPF": cpf_digits,
+        "redirectURL": redirect_url,
+    }
 
-        payload = {
-            "email": email,
-            "token": token,
-
-            "currency": "BRL",
-            "reference": reference[:200],
-
-            "itemId1": "1",
-            "itemDescription1": item_description[:100],
-            "itemQuantity1": "1",
-            "itemAmount1": f"{amount_brl:.2f}",
-
-            "senderName": buyer_name[:50],
-            "senderEmail": (buyer_email or "").strip()[:60] or "comprador-teste@exemplo.com",
-            "senderAreaCode": area,
-            "senderPhone": number,
-            "senderCPF": cpf_digits,
-
-            "redirectURL": redirect_url,
-        }
     print("[CHECKOUT] env=", _env())
     print("[CHECKOUT] email=", email)
     print("[CHECKOUT] token_len=", len(token))
-
 
     if notification_url:
         payload["notificationURL"] = notification_url
@@ -113,7 +94,6 @@ def create_checkout_redirect(
     if not r.ok:
         raise RuntimeError(f"Checkout Redirect erro {r.status_code}: {r.text}")
 
-    # XML: <checkout><code>...</code></checkout>
     try:
         root = ET.fromstring(r.text.strip())
         code = (root.findtext("code") or "").strip()
