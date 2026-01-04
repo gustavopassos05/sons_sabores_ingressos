@@ -150,20 +150,18 @@ def pay_card(payment_id: int):
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
     with db() as s:
-        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        purchase = s.scalar(
+            select(Purchase).where(Purchase.token == token)
+        )
         if not purchase:
             abort(404)
 
-        # pega último pagamento
         payment = s.scalar(
             select(Payment)
             .where(Payment.purchase_id == purchase.id)
             .order_by(Payment.id.desc())
         )
 
-
-    # ⚠️ NÃO FINALIZA AQUI
-    # Só mostra status
     return render_template(
         "payment_return.html",
         purchase=purchase,
