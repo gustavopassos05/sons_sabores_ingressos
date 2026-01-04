@@ -26,10 +26,10 @@ def checkout_redirect_base() -> str:
 
 
 def _credentials() -> Tuple[str, str]:
-    email = (os.getenv("PAGSEGURO_EMAIL") or "").strip()
-    token = (os.getenv("PAGSEGURO_TOKEN") or "").strip()
+    email = (os.getenv("PAGBANK_MERCHANT_EMAIL") or "").strip()
+    token = (os.getenv("PAGBANK_TOKEN") or "").strip()
     if not email or not token:
-        raise RuntimeError("PAGSEGURO_EMAIL e PAGSEGURO_TOKEN precisam estar no .env")
+        raise RuntimeError("PAGBANK_MERCHANT_EMAIL e PAGBANK_TOKEN precisam estar no .env")
     return email, token
 
 
