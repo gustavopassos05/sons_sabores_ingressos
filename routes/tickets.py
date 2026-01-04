@@ -3,13 +3,12 @@ from flask import Blueprint, render_template, abort
 from sqlalchemy import select
 
 from db import db
-from models import Purchase, Ticket
+from models import Purchase, Ticket, Payment
 
 bp_tickets = Blueprint("tickets", __name__)
 
 @bp_tickets.get("/admin")
 def admin_tickets():
-    # depois você coloca login aqui
     return render_template("admin_tickets.html")
 
 @bp_tickets.get("/purchase/<token>")
@@ -27,4 +26,10 @@ def purchase_public(token: str):
             )
         )
 
-    return render_template("purchase_public.html", purchase=purchase, tickets=tickets)
+        payment = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(Payment.id.desc())
+        )
+
+    return render_template("purchase_public.html", purchase=purchase, tickets=tickets, payment=payment)

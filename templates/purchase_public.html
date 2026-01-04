@@ -5,6 +5,36 @@
 
   <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
   <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
+  {% if payment and payment.status == "paid" %}
+    {% if payment.tickets_pdf_url or payment.tickets_zip_url %}
+      <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-col gap-2 items-center text-center">
+        <p class="text-green-700 font-medium">Ingressos liberados ✅</p>
+
+        {% if payment.tickets_pdf_url %}
+          <a href="{{ payment.tickets_pdf_url }}" target="_blank"
+             class="inline-block rounded-xl bg-black text-white px-6 py-3">
+            Baixar ingressos (PDF)
+          </a>
+        {% endif %}
+
+        {% if payment.tickets_zip_url %}
+          <a href="{{ payment.tickets_zip_url }}" target="_blank"
+             class="inline-block rounded-xl border px-6 py-3">
+            Baixar (ZIP)
+          </a>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
+        <p class="text-zinc-600">Pagamento confirmado ✅</p>
+        <p class="text-sm text-zinc-500 mt-1">Estamos gerando seus arquivos para download…</p>
+        <script>
+          setTimeout(() => window.location.reload(), 3000);
+        </script>
+      </div>
+    {% endif %}
+  {% endif %}
+
 
   <div class="mb-4 text-sm text-zinc-700 space-y-1">
     <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>

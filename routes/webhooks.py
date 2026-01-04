@@ -8,17 +8,23 @@ from models import Payment, Purchase
 
 bp_webhooks = Blueprint("webhooks", __name__)
 
-def _mark_paid_and_finalize(purchase: Purchase, payment: Payment):
+def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
+    # idempotência: se já está pago, não refaz
+    if payment.status == "paid" and purchase.status == "paid":
+        return
+
     payment.status = "paid"
     payment.paid_at = datetime.utcnow()
     purchase.status = "paid"
 
+    s.add(payment)
+    s.add(purchase)
+    s.commit()  # ✅ garante persistência antes de gerar arquivos
+
     finalize = current_app.extensions.get("finalize_purchase")
     if callable(finalize):
-        try:
-            finalize(purchase.id)
-        except TypeError:
-            finalize(purchase)
+        finalize(purchase.id)
+
 
 @bp_webhooks.post("/webhooks/pagbank")
 def pagbank_webhook():
