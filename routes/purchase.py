@@ -25,7 +25,9 @@ def buy(event_slug: str):
         "buy.html",
         event=ev,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+        form={},  # <-- aqui
     )
+
 
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
