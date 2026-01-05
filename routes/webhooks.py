@@ -11,7 +11,7 @@ bp_webhooks = Blueprint("webhooks", __name__)
 @bp_webhooks.post("/webhooks/pagbank-checkout")
 def pagbank_checkout_webhook():
     print("[WEBHOOK] pagbank-checkout HIT", request.headers.get("User-Agent"))
-    ...
+    
 
 def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
     if payment.status == "paid" and purchase.status == "paid":
