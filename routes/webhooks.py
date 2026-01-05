@@ -8,13 +8,10 @@ from models import Payment, Purchase
 
 bp_webhooks = Blueprint("webhooks", __name__)
 
-@bp_webhooks.post("/webhooks/pagbank-checkout")
-def pagbank_checkout_webhook():
-    print("[WEBHOOK] pagbank-checkout HIT", request.headers.get("User-Agent"))
-    
 
 def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
-    if payment.status == "paid" and purchase.status == "paid":
+    # idempotência
+    if (payment.status or "").lower() == "paid" and (purchase.status or "").lower() == "paid":
         return
 
     payment.status = "paid"
@@ -23,7 +20,7 @@ def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
 
     s.add(payment)
     s.add(purchase)
-    s.commit()  # ✅ ESSENCIAL
+    s.commit()  # ✅ essencial
 
     finalize = current_app.extensions.get("finalize_purchase")
     if callable(finalize):
@@ -32,15 +29,14 @@ def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
 
 @bp_webhooks.post("/webhooks/pagbank")
 def pagbank_webhook():
-    payload = request.json or {}
+    print("[WEBHOOK] pagbank HIT", request.headers.get("User-Agent"))
 
-    # ✅ caminho 1: payload estilo "charge"
-    # Exemplo típico tem: id, reference_id, status, ...
+    payload = request.json or {}
     reference_id = (payload.get("reference_id") or "").strip()
     status = (payload.get("status") or "").strip().upper()
 
+    # caminho 1: reference_id = purchase-<id>
     if reference_id.startswith("purchase-") and status:
-        # considera pago quando PAID
         if status != "PAID":
             return {"ok": True}
 
@@ -62,11 +58,11 @@ def pagbank_webhook():
             if not payment:
                 abort(404)
 
-            _mark_paid_and_finalize(purchase, payment)
+            _mark_paid_and_finalize(s, purchase, payment)
 
         return {"ok": True}
 
-    # ✅ caminho 2: compat com seu formato antigo
+    # caminho 2: compat antigo
     event = payload.get("event")
     charge_id = payload.get("charge_id")
     if event == "PAYMENT_CONFIRMED" and charge_id:
@@ -79,21 +75,21 @@ def pagbank_webhook():
             if not purchase:
                 abort(404)
 
-            _mark_paid_and_finalize(purchase, payment)
+            _mark_paid_and_finalize(s, purchase, payment)
 
         return {"ok": True}
 
     return {"ok": True}
 
+
 @bp_webhooks.post("/webhooks/pagbank-checkout")
 def pagbank_checkout_webhook():
-    payload = request.json or {}
+    print("[WEBHOOK] pagbank-checkout HIT", request.headers.get("User-Agent"))
 
-    # payload exemplo tem: id, reference_id, status :contentReference[oaicite:3]{index=3}
+    payload = request.json or {}
     reference_id = (payload.get("reference_id") or "").strip()
     status = (payload.get("status") or "").strip().upper()
 
-    # no checkout, status transacional pode ser PAID, WAITING, DECLINED... :contentReference[oaicite:4]{index=4}
     if not reference_id.startswith("purchase-") or not status:
         return {"ok": True}
 
@@ -118,6 +114,6 @@ def pagbank_checkout_webhook():
         if not payment:
             abort(404)
 
-        _mark_paid_and_finalize(purchase, payment)
+        _mark_paid_and_finalize(s, purchase, payment)
 
     return {"ok": True}
