@@ -96,3 +96,8 @@ class Payment(Base):
     paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     purchase: Mapped["Purchase"] = relationship(back_populates="payments")
+
+    tickets_pdf_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    tickets_zip_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    tickets_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+

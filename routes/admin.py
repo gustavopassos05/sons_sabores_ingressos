@@ -10,7 +10,6 @@ from models import Purchase, Payment
 
 bp_admin = Blueprint("admin", __name__)
 
-
 def _check_admin_key():
     key = (os.getenv("ADMIN_KEY") or "").strip()
     if not key:

@@ -156,9 +156,10 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             _make_zip([pdf_path] + png_paths, zip_path)
 
             # upload FTP
-            remote_folder = f"{remote_prefix}/{purchase.token}"
-            pdf_remote = f"{remote_folder}/{pdf_path.name}"
-            zip_remote = f"{remote_folder}/{zip_path.name}"
+            # upload FTP (sem subpastas, mais seguro)
+            pdf_remote = f"{purchase.token}-ingressos.pdf"
+            zip_remote = f"{purchase.token}-ingressos.zip"
+
 
             ok_pdf, info_pdf = upload_file(pdf_path, pdf_remote)
             if not ok_pdf:
@@ -171,6 +172,12 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             payment.tickets_pdf_url = f"{public_base}/{pdf_remote}"
             payment.tickets_zip_url = f"{public_base}/{zip_remote}"
             payment.tickets_generated_at = datetime.utcnow()
+
+            print("[FINALIZE] Gerando ingressos para purchase", purchase.id)
+            print("[FINALIZE] Enviando PDF:", pdf_remote)
+            print("[FINALIZE] Enviando ZIP:", zip_remote)
+            print("[FINALIZE] URLs:", payment.tickets_pdf_url, payment.tickets_zip_url)
+
 
             s.commit()
 
