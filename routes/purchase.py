@@ -211,9 +211,23 @@ def pay_return(token: str):
             .order_by(Payment.id.desc())
         )
 
+    # 🔁 se já foi pago mas ainda não gerou ingresso, força finalize
+    if purchase.status == "paid" and payment and payment.status == "paid":
+        finalize = current_app.extensions.get("finalize_purchase")
+        if callable(finalize):
+            finalize(purchase.id)
+
+    tickets = []
+    if purchase.status == "paid":
+        tickets = s.execute(
+            select(Ticket).where(Ticket.purchase_id == purchase.id)
+        ).scalars().all()
+
     return render_template(
         "payment_return.html",
         purchase=purchase,
         payment=payment,
+        tickets=tickets,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+
