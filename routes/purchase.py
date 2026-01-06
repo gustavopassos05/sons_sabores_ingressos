@@ -7,7 +7,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from sqlalchemy import select, desc, and_
 
 from db import db
-from models import Event, Purchase, Payment
+from models import Event, Purchase, Payment, Ticket 
 from app_services.payments.pagbank_checkout import create_checkout_redirect
 
 bp_purchase = Blueprint("purchase", __name__)
