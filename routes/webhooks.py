@@ -9,6 +9,23 @@ from models import Payment, Purchase
 bp_webhooks = Blueprint("webhooks", __name__)
 
 
+def _get_payload() -> dict:
+    """
+    PagBank às vezes manda JSON, às vezes manda form-urlencoded.
+    Aqui a gente aceita os dois sem dar 415.
+    """
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict) and payload:
+        return payload
+
+    # fallback: x-www-form-urlencoded
+    form = request.form.to_dict(flat=True)
+    if isinstance(form, dict) and form:
+        return form
+
+    return {}
+
+
 def _maybe_finalize(purchase_id: int) -> None:
     finalize = current_app.extensions.get("finalize_purchase")
     if callable(finalize):
@@ -38,7 +55,6 @@ def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
         s.commit()
 
     # Mesmo se já estava pago: se não tem links ainda, tenta finalizar.
-    # (Isso resolve caso finalize tenha falhado em tentativa anterior)
     if not (getattr(payment, "tickets_pdf_url", None) or getattr(payment, "tickets_zip_url", None)):
         _maybe_finalize(purchase.id)
 
@@ -47,22 +63,43 @@ def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
 
 
+def _get_reference_id(payload: dict) -> str:
+    # PagBank pode variar o nome do campo
+    return str(
+        payload.get("reference_id")
+        or payload.get("referenceId")
+        or payload.get("reference")
+        or ""
+    ).strip()
+
+
+def _get_status(payload: dict) -> str:
+    # Pode vir paid/PAID etc.
+    return str(payload.get("status") or "").strip().upper()
+
+
+def _get_external_id(payload: dict) -> str:
+    # Alguns payloads trazem id do pedido/charge/checkout
+    ext = (
+        payload.get("id")
+        or payload.get("order_id")
+        or payload.get("orderId")
+        or payload.get("charge_id")
+        or payload.get("chargeId")
+        or ""
+    )
+    return str(ext).strip()
+
+
 @bp_webhooks.post("/webhooks/pagbank")
 def pagbank_webhook():
     print("[WEBHOOK] pagbank HIT", request.headers.get("User-Agent"), request.content_type)
 
-    payload = request.get_json(silent=True) or {}
+    payload = _get_payload()
 
-    reference_id = (payload.get("reference_id") or "").strip()
-    status = (payload.get("status") or "").strip().upper()
-
-    # alguns payloads trazem um id do "pedido/charge"
-    external_id = (
-        (payload.get("id") or "")
-        or (payload.get("order_id") or "")
-        or (payload.get("charge_id") or "")
-    )
-    external_id = str(external_id).strip()
+    reference_id = _get_reference_id(payload)
+    status = _get_status(payload)
+    external_id = _get_external_id(payload)
 
     # caminho 1: reference_id = purchase-<id>
     if reference_id.startswith("purchase-") and status:
@@ -89,6 +126,7 @@ def pagbank_webhook():
                 q = q.where(Payment.external_id == external_id)
 
             payment = s.scalar(q)
+
             if not payment:
                 # fallback: pega o último pix mesmo sem external_id bater
                 payment = s.scalar(
@@ -96,6 +134,7 @@ def pagbank_webhook():
                     .where(Payment.purchase_id == purchase.id, Payment.provider == "pagbank")
                     .order_by(Payment.id.desc())
                 )
+
             if not payment:
                 abort(404)
 
@@ -105,7 +144,7 @@ def pagbank_webhook():
 
     # caminho 2: compat antigo
     event = payload.get("event")
-    charge_id = payload.get("charge_id")
+    charge_id = payload.get("charge_id") or payload.get("chargeId")
     if event == "PAYMENT_CONFIRMED" and charge_id:
         with db() as s:
             payment = s.scalar(
@@ -131,11 +170,12 @@ def pagbank_webhook():
 def pagbank_checkout_webhook():
     print("[WEBHOOK] pagbank-checkout HIT", request.headers.get("User-Agent"), request.content_type)
 
-    payload = request.get_json(silent=True) or {}
-    reference_id = (payload.get("reference_id") or "").strip()
-    status = (payload.get("status") or "").strip().upper()
+    payload = _get_payload()
 
-    checkout_id = str(payload.get("id") or "").strip()
+    reference_id = _get_reference_id(payload)
+    status = _get_status(payload)
+
+    checkout_id = _get_external_id(payload)
 
     if not reference_id.startswith("purchase-") or not status:
         return {"ok": True}
@@ -163,6 +203,7 @@ def pagbank_checkout_webhook():
             q = q.where(Payment.external_id == checkout_id)
 
         payment = s.scalar(q)
+
         if not payment:
             # fallback: último checkout
             payment = s.scalar(
@@ -170,6 +211,7 @@ def pagbank_checkout_webhook():
                 .where(Payment.purchase_id == purchase.id, Payment.provider == "pagbank_checkout")
                 .order_by(Payment.id.desc())
             )
+
         if not payment:
             abort(404)
 
