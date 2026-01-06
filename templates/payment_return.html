@@ -1,131 +1,21 @@
-{% extends "base.html" %}
-{% block content %}
+{% if payment and payment.status == "paid" %}
+  {# ... seu bloco de liberados/gerando ... #}
+{% else %}
+  <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
+    <p class="text-zinc-700 font-medium">Pagamento em processamento</p>
+    <p class="text-sm text-zinc-500 mt-1">
+      Se você fechou a tela do PagBank, pode continuar o pagamento no botão abaixo.
+    </p>
 
-<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
-
-  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
-  <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
-
-  {# =========================
-     STATUS / AÇÃO PRINCIPAL
-     ========================= #}
-
-  {% set st = (payment.status if payment else "")|lower %}
-
-  {% if payment and st == "paid" %}
-    {% if payment.tickets_pdf_url or payment.tickets_zip_url %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-col gap-2 items-center text-center">
-        <p class="text-green-700 font-medium">Pagamento confirmado ✅</p>
-        <p class="text-sm text-zinc-500">Ingressos liberados para download.</p>
-
-        <div class="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2">
-          {% if payment.tickets_pdf_url %}
-            <a href="{{ payment.tickets_pdf_url }}" target="_blank"
-               class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
-              Baixar ingressos (PDF)
-            </a>
-          {% endif %}
-
-          {% if payment.tickets_zip_url %}
-            <a href="{{ payment.tickets_zip_url }}" target="_blank"
-               class="inline-block rounded-xl border px-6 py-3 text-center">
-              Baixar (ZIP)
-            </a>
-          {% endif %}
-
-          <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
-             class="inline-block rounded-xl border px-6 py-3 text-center">
-            Ver página dos ingressos
-          </a>
-        </div>
-      </div>
-    {% else %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-        <p class="text-green-700 font-medium">Pagamento confirmado ✅</p>
-        <p class="text-sm text-zinc-500 mt-1">Estamos gerando seus arquivos para download…</p>
-        <p class="text-xs text-zinc-400 mt-2">Essa página atualiza automaticamente.</p>
-        <script>
-          setTimeout(() => window.location.reload(), 3000);
-        </script>
-      </div>
+    {% if payment and payment.checkout_url %}
+      <a href="{{ payment.checkout_url }}"
+         class="inline-block mt-3 rounded-xl bg-black text-white px-6 py-3">
+        Ir para o pagamento
+      </a>
     {% endif %}
 
-  {% elif payment and st == "pending" %}
-    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-      <p class="text-zinc-800 font-medium">Pagamento em processamento</p>
-      <p class="text-sm text-zinc-500 mt-1">Assim que confirmar, os ingressos serão liberados automaticamente.</p>
-
-      <div class="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
-        <a href="{{ url_for('purchase.pay_pix', payment_id=payment.id) }}"
-           class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
-          Voltar para o QR Code (PIX)
-        </a>
-        <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
-           class="inline-block rounded-xl border px-6 py-3 text-center">
-          Ver status dos ingressos
-        </a>
-      </div>
-
-      <script>
-        setTimeout(() => window.location.reload(), 5000);
-      </script>
-    </div>
-
-  {% elif payment and (st == "failed" or st == "expired" or st == "canceled" or st == "cancelled") %}
-    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-      <p class="text-red-700 font-medium">Pagamento não concluído</p>
-      <p class="text-sm text-zinc-500 mt-1">
-        Esse pagamento foi finalizado como <span class="font-semibold">{{ payment.status }}</span>.
-        Você pode gerar um novo.
-      </p>
-
-      <div class="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
-        <a href="{{ url_for('purchase.buy', event_slug=purchase.event.slug if purchase.event else 'sons-e-sabores') }}"
-           class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
-          Gerar novo pagamento
-        </a>
-        <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
-           class="inline-block rounded-xl border px-6 py-3 text-center">
-          Ver página dos ingressos
-        </a>
-      </div>
-    </div>
-
-  {% else %}
-    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-      <p class="text-zinc-800 font-medium">Status do pagamento</p>
-      <p class="text-sm text-zinc-500 mt-1">
-        {% if payment %}
-          Status atual: <span class="font-semibold">{{ payment.status }}</span>
-        {% else %}
-          Não encontramos o pagamento desta compra.
-        {% endif %}
-      </p>
-
-      <div class="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
-        <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
-           class="inline-block rounded-xl border px-6 py-3 text-center">
-          Ver página dos ingressos
-        </a>
-        <a href="{{ url_for('purchase.buy', event_slug=purchase.event.slug if purchase.event else 'sons-e-sabores') }}"
-           class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
-          Voltar para compra
-        </a>
-      </div>
-    </div>
-  {% endif %}
-
-  {# =========================
-     RESUMO
-     ========================= #}
-
-  <div class="mt-4 text-sm text-zinc-700 space-y-1">
-    <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
-    {% if payment %}
-      <div><span class="font-semibold">Pagamento:</span> {{ payment.provider }} — {{ payment.status }}</div>
-    {% endif %}
+    <script>
+      setTimeout(() => window.location.reload(), 4000);
+    </script>
   </div>
-
-</div>
-
-{% endblock %}
+{% endif %}

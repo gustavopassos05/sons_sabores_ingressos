@@ -7,7 +7,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from sqlalchemy import select, desc, and_
 
 from db import db
-from models import Event, Purchase, Payment, Ticket 
+from models import Event, Purchase, Payment, Ticket
 from app_services.payments.pagbank_checkout import create_checkout_redirect
 
 bp_purchase = Blueprint("purchase", __name__)
@@ -65,81 +65,71 @@ def buy_post(event_slug: str):
         flash("Nome do comprador é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    cpf_digits = _digits(buyer_cpf)
-    if not cpf_digits or len(cpf_digits) < 11:
-        flash("CPF inválido.", "error")
-        return redirect(url_for("purchase.buy", event_slug=event_slug))
-
-    # ✅ trava allowlist (soft launch)
-    if not _cpf_allowed(cpf_digits):
-        flash("Este CPF ainda não está liberado para compra.", "error")
-        return redirect(url_for("purchase.buy", event_slug=event_slug))
+    cpf_digits = "".join(c for c in buyer_cpf if c.isdigit())
 
     guests_raw = (request.form.get("guests_text") or "").strip()
     guests_lines = [x.strip() for x in guests_raw.splitlines() if x.strip()]
     guests_text = "\n".join(guests_lines)
 
-    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # ✅ R$ 1,00 por padrão aqui
+    # preço (você pediu 1,00)
     total_people = 1 + len(guests_lines)
-    total_cents = price_cents_unit * total_people
+    total_cents = 100 * total_people
     total_brl = total_cents / 100
 
     purchase_token = secrets.token_urlsafe(24)
+
+    checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
+    redirect_url = f"{base_url}/pay/return/{purchase_token}"
 
     with db() as s:
         ev = s.scalar(select(Event).where(Event.slug == event_slug))
         if not ev:
             abort(404)
 
-        # =========================================================
-        # ✅ REGRA ANTI DUPLICIDADE (event + show + cpf_digits)
-        # =========================================================
-        existing_purchase = s.scalar(
-            select(Purchase)
-            .where(
-                and_(
+        # 🔒 REGRA: se já existe compra para esse CPF+show+evento
+        # - se pendente: reaproveita
+        # - se paga: manda pra ingressos
+        existing = None
+        if cpf_digits:
+            existing = s.scalar(
+                select(Purchase)
+                .where(
                     Purchase.event_id == ev.id,
                     Purchase.show_name == show_name,
                     Purchase.buyer_cpf_digits == cpf_digits,
                 )
+                .order_by(Purchase.id.desc())
             )
-            .order_by(desc(Purchase.id))
-        )
 
-        if existing_purchase:
-            # pega payment pago, senão pega o último
-            payment_paid = s.scalar(
+        if existing:
+            last_payment_paid = s.scalar(
                 select(Payment)
-                .where(Payment.purchase_id == existing_purchase.id, Payment.status == "paid")
-                .order_by(desc(Payment.id))
+                .where(Payment.purchase_id == existing.id, Payment.status == "paid")
+                .order_by(Payment.id.desc())
             )
-            last_payment = payment_paid or s.scalar(
+            if last_payment_paid:
+                return redirect(url_for("tickets.purchase_public", token=existing.token))
+
+            last_payment = s.scalar(
                 select(Payment)
-                .where(Payment.purchase_id == existing_purchase.id)
-                .order_by(desc(Payment.id))
+                .where(Payment.purchase_id == existing.id)
+                .order_by(Payment.id.desc())
             )
 
-            # ✅ se já está pago -> ingressos
-            if (existing_purchase.status or "").lower() == "paid" or (payment_paid and payment_paid.status == "paid"):
-                return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
-
-            # ✅ se tem pendente -> reabre o checkout existente
+            # pendente com checkout_url → reabre
             if last_payment and (last_payment.status or "").lower() == "pending" and getattr(last_payment, "checkout_url", None):
                 return redirect(last_payment.checkout_url)
 
-            # ✅ se falhou/expirou -> deixa criar nova (segue abaixo)
-            # (não faz nada aqui)
+            # se falhou/expirou → deixa criar nova
+            # cai e cria nova compra
 
-        # =========================================================
-        # ✅ CRIA NOVA PURCHASE + CHECKOUT (sempre PagBank)
-        # =========================================================
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
             show_name=show_name,
             buyer_name=buyer_name,
             buyer_cpf=buyer_cpf,
-            buyer_cpf_digits=cpf_digits,   # ✅ NORMALIZADO
+            buyer_cpf_digits=cpf_digits if cpf_digits else None,
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             guests_text=guests_text,
@@ -149,9 +139,7 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
-        redirect_url = f"{base_url}/pay/return/{purchase.token}"
-
+        # ✅ cria checkout redirect (PagBank decide PIX ou cartão lá)
         checkout_id, checkout_url = create_checkout_redirect(
             reference=f"purchase-{purchase.id}",
             item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
@@ -160,9 +148,9 @@ def buy_post(event_slug: str):
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             buyer_cpf=buyer_cpf,
-            redirect_url=redirect_url,
+            redirect_url=f"{base_url}/pay/return/{purchase.token}",
             payment_notification_url=checkout_notification_url,
-            checkout_notification_url=None,  # opcional
+            checkout_notification_url=None,
         )
 
         payment = Payment(
@@ -172,13 +160,14 @@ def buy_post(event_slug: str):
             currency="BRL",
             status="pending",
             external_id=checkout_id,
-            checkout_url=checkout_url,  # ✅ guarda pra reabrir
+            checkout_url=checkout_url,   # ✅ precisa existir na model + coluna
             paid_at=None,
         )
         s.add(payment)
         s.commit()
 
         return redirect(checkout_url)
+
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
     finalize_fn = current_app.extensions.get("finalize_purchase")
@@ -246,3 +235,13 @@ def pay_return(token: str):
         payment=payment,
         tickets=tickets,
     )
+
+@bp_purchase.get("/pay/<int:payment_id>")
+def pay_pix(payment_id: int):
+    with db() as s:
+        p = s.get(Payment, payment_id)
+        if not p:
+            abort(404)
+    if getattr(p, "checkout_url", None):
+        return redirect(p.checkout_url)
+    abort(404)
