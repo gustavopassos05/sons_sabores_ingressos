@@ -27,9 +27,11 @@ class Purchase(Base):
     show_name: Mapped[str] = mapped_column(String(180), nullable=False)
 
     buyer_name: Mapped[str] = mapped_column(String(160), nullable=False)
-    buyer_cpf: Mapped[str] = mapped_column(String(30), nullable=True)
     buyer_email: Mapped[str] = mapped_column(String(200), nullable=True)
     buyer_phone: Mapped[str] = mapped_column(String(40), nullable=True)
+    buyer_cpf: Mapped[str] = mapped_column(String(30), nullable=True)
+    buyer_cpf_digits: Mapped[str] = mapped_column(String(14), nullable=True)  # ✅ ADD AQUI
+
 
     guests_text: Mapped[str] = mapped_column(Text, nullable=True)
 
