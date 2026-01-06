@@ -90,6 +90,7 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/paid/failed
 
     external_id: Mapped[str] = mapped_column(String(120), nullable=True)  # order id PagBank
+    checkout_url: Mapped[str] = mapped_column(String(600), nullable=True)
 
     qr_text: Mapped[str] = mapped_column(Text, nullable=True)
     qr_image_base64: Mapped[str] = mapped_column(Text, nullable=True)
