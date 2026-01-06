@@ -281,31 +281,74 @@ def pay_card(payment_id: int):
 
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
+    finalize_fn = current_app.extensions.get("finalize_purchase")
+
     with db() as s:
         purchase = s.scalar(select(Purchase).where(Purchase.token == token))
         if not purchase:
             abort(404)
 
-        # ✅ pega o "paid" mais recente, se existir
-        paid_payment = s.scalar(
+        # ✅ 1) payment pago (se existir) — evita cair no pending errado
+        payment_paid = s.scalar(
             select(Payment)
             .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
             .order_by(Payment.id.desc())
         )
 
-        if paid_payment:
-            return redirect(url_for("tickets.purchase_public", token=purchase.token))
-
-        # senão, mostra o último (pending/failed)
-        payment = s.scalar(
+        # ✅ 2) senão, pega o último (pending/failed/expired)
+        payment = payment_paid or s.scalar(
             select(Payment)
             .where(Payment.purchase_id == purchase.id)
             .order_by(Payment.id.desc())
         )
 
+        tickets = list(
+            s.scalars(
+                select(Ticket)
+                .where(Ticket.purchase_id == purchase.id)
+                .order_by(Ticket.id.asc())
+            )
+        )
+
+        # ✅ se já está pago, mas ainda não gerou links, tenta finalizar (idempotente)
+        should_finalize = (
+            payment
+            and (payment.status or "").lower() == "paid"
+            and not payment.tickets_pdf_url
+            and callable(finalize_fn)
+        )
+
+    # ⚠️ chama fora do "with db()" pra não misturar sessão
+    if should_finalize:
+        try:
+            finalize_fn(purchase.id)
+        except Exception:
+            pass
+
+        # recarrega depois do finalize
+        with db() as s:
+            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+            tickets = list(
+                s.scalars(
+                    select(Ticket)
+                    .where(Ticket.purchase_id == purchase.id)
+                    .order_by(Ticket.id.asc())
+                )
+            )
+            payment = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+                .order_by(Payment.id.desc())
+            ) or s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(Payment.id.desc())
+            )
+
     return render_template(
         "payment_return.html",
         purchase=purchase,
         payment=payment,
+        tickets=tickets,          # ✅ AGORA TEM
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
