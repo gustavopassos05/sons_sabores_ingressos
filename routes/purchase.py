@@ -3,7 +3,7 @@ import os
 import secrets
 from datetime import datetime
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
 from sqlalchemy import select, desc, and_
 
 from db import db
@@ -188,21 +188,18 @@ def pay_return(token: str):
         if not purchase:
             abort(404)
 
-        # 1) preferir payment PAID
         payment_paid = s.scalar(
             select(Payment)
             .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
             .order_by(Payment.id.desc())
         )
 
-        # 2) senão, último payment
         payment = payment_paid or s.scalar(
             select(Payment)
             .where(Payment.purchase_id == purchase.id)
             .order_by(Payment.id.desc())
         )
 
-        # tickets (pode estar vazio ainda)
         tickets = list(
             s.scalars(
                 select(Ticket)
@@ -214,18 +211,16 @@ def pay_return(token: str):
         should_finalize = (
             payment
             and (payment.status or "").lower() == "paid"
-            and not payment.tickets_pdf_url
+            and not (payment.tickets_pdf_url or payment.tickets_zip_url)
             and callable(finalize_fn)
         )
 
-    # chama fora da sessão
     if should_finalize:
         try:
             finalize_fn(purchase.id)
         except Exception:
             pass
 
-        # recarrega depois do finalize
         with db() as s:
             purchase = s.scalar(select(Purchase).where(Purchase.token == token))
             tickets = list(
@@ -245,15 +240,9 @@ def pay_return(token: str):
                 .order_by(Payment.id.desc())
             )
 
-    # ✅ se já tiver pago, manda pro link final (compra/ingressos)
-    if purchase and (purchase.status or "").lower() == "paid":
-        return redirect(url_for("tickets.purchase_public", token=purchase.token))
-
-    # senão, mostra tela de “aguardando”
     return render_template(
         "payment_return.html",
         purchase=purchase,
         payment=payment,
         tickets=tickets,
-        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
