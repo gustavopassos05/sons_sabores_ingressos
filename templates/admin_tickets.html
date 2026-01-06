@@ -47,7 +47,7 @@
               {% endif %}
             </td>
             <td>
-              <a class="underline" href="{{ url_for('ticket_public', token=t.token) }}">abrir</a>
+              <a class="underline" href="{{ url_for('tickets.purchase_public', token=purchase.token, _external=True) }}">abrir</a>
               <span class="text-zinc-400">·</span>
               <a class="underline" href="{{ url_for('checkin', token=t.token) }}">check-in</a>
             </td>
