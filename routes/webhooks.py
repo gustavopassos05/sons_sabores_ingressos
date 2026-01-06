@@ -33,10 +33,12 @@ def _maybe_finalize(purchase_id: int) -> None:
             finalize(purchase_id)
         except Exception as e:
             # ⚠️ não derruba o webhook (PagBank pode reenviar)
-            current_app.logger.exception("[FINALIZE] erro ao finalizar purchase=%s: %s", purchase_id, e)
+            current_app.logger.exception(
+                "[FINALIZE] erro ao finalizar purchase=%s: %s", purchase_id, e
+            )
 
 
-def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment):
+def _mark_paid_and_finalize(s, purchase: Purchase, payment: Payment) -> None:
     """
     Marca como pago (se ainda não estiver) e SEMPRE tenta finalizar
     se estiver pago e ainda não tiver URLs de download.
@@ -64,22 +66,52 @@ def _digits(s: str) -> str:
 
 
 def _get_reference_id(payload: dict) -> str:
-    # PagBank pode variar o nome do campo
-    return str(
+    """
+    PagBank pode variar o nome do campo.
+    Também pode vir aninhado (ex: data.reference_id).
+    """
+    if not isinstance(payload, dict):
+        return ""
+
+    ref = (
         payload.get("reference_id")
         or payload.get("referenceId")
         or payload.get("reference")
         or ""
-    ).strip()
+    )
+
+    # tenta formatos aninhados comuns
+    if not ref and isinstance(payload.get("data"), dict):
+        d = payload["data"]
+        ref = d.get("reference_id") or d.get("referenceId") or d.get("reference") or ""
+
+    return str(ref).strip()
 
 
 def _get_status(payload: dict) -> str:
-    # Pode vir paid/PAID etc.
-    return str(payload.get("status") or "").strip().upper()
+    """
+    Pode vir paid/PAID etc.
+    Também pode vir aninhado (ex: data.status).
+    """
+    if not isinstance(payload, dict):
+        return ""
+
+    st = payload.get("status") or ""
+
+    if not st and isinstance(payload.get("data"), dict):
+        st = payload["data"].get("status") or ""
+
+    return str(st).strip().upper()
 
 
 def _get_external_id(payload: dict) -> str:
-    # Alguns payloads trazem id do pedido/charge/checkout
+    """
+    Alguns payloads trazem id do pedido/charge/checkout.
+    Também pode vir aninhado (ex: data.id).
+    """
+    if not isinstance(payload, dict):
+        return ""
+
     ext = (
         payload.get("id")
         or payload.get("order_id")
@@ -88,6 +120,18 @@ def _get_external_id(payload: dict) -> str:
         or payload.get("chargeId")
         or ""
     )
+
+    if not ext and isinstance(payload.get("data"), dict):
+        d = payload["data"]
+        ext = (
+            d.get("id")
+            or d.get("order_id")
+            or d.get("orderId")
+            or d.get("charge_id")
+            or d.get("chargeId")
+            or ""
+        )
+
     return str(ext).strip()
 
 
@@ -96,10 +140,19 @@ def pagbank_webhook():
     print("[WEBHOOK] pagbank HIT", request.headers.get("User-Agent"), request.content_type)
 
     payload = _get_payload()
-
     reference_id = _get_reference_id(payload)
     status = _get_status(payload)
     external_id = _get_external_id(payload)
+
+    # Debug leve (ajuda quando o PagBank vier diferente)
+    if not reference_id or not status:
+        current_app.logger.info(
+            "[WEBHOOK] pagbank payload keys=%s ref=%s status=%s ext=%s",
+            list(payload.keys()) if isinstance(payload, dict) else type(payload),
+            reference_id,
+            status,
+            external_id,
+        )
 
     # caminho 1: reference_id = purchase-<id>
     if reference_id.startswith("purchase-") and status:
@@ -116,7 +169,7 @@ def pagbank_webhook():
             if not purchase:
                 abort(404)
 
-            # ✅ PIX: procure o payment do provider pagbank (e de preferência pelo external_id)
+            # ✅ PIX: procure o payment do provider pagbank (de preferência pelo external_id)
             q = (
                 select(Payment)
                 .where(Payment.purchase_id == purchase.id, Payment.provider == "pagbank")
@@ -143,8 +196,15 @@ def pagbank_webhook():
         return {"ok": True}
 
     # caminho 2: compat antigo
-    event = payload.get("event")
-    charge_id = payload.get("charge_id") or payload.get("chargeId")
+    event = payload.get("event") if isinstance(payload, dict) else None
+    charge_id = None
+    if isinstance(payload, dict):
+        charge_id = payload.get("charge_id") or payload.get("chargeId")
+
+        # tenta aninhado
+        if not charge_id and isinstance(payload.get("data"), dict):
+            charge_id = payload["data"].get("charge_id") or payload["data"].get("chargeId")
+
     if event == "PAYMENT_CONFIRMED" and charge_id:
         with db() as s:
             payment = s.scalar(
@@ -171,11 +231,19 @@ def pagbank_checkout_webhook():
     print("[WEBHOOK] pagbank-checkout HIT", request.headers.get("User-Agent"), request.content_type)
 
     payload = _get_payload()
-
     reference_id = _get_reference_id(payload)
     status = _get_status(payload)
-
     checkout_id = _get_external_id(payload)
+
+    # Debug leve quando vier form sem esses campos
+    if not reference_id or not status:
+        current_app.logger.info(
+            "[WEBHOOK] checkout payload keys=%s ref=%s status=%s ext=%s",
+            list(payload.keys()) if isinstance(payload, dict) else type(payload),
+            reference_id,
+            status,
+            checkout_id,
+        )
 
     if not reference_id.startswith("purchase-") or not status:
         return {"ok": True}
