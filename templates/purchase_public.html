@@ -5,36 +5,84 @@
 
   <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
   <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
-  {% if payment and payment.status == "paid" %}
+
+  {% set st = (payment.status if payment else "")|lower %}
+
+  {% if payment and st == "paid" %}
     {% if payment.tickets_pdf_url or payment.tickets_zip_url %}
       <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-col gap-2 items-center text-center">
         <p class="text-green-700 font-medium">Ingressos liberados ✅</p>
 
-        {% if payment.tickets_pdf_url %}
-          <a href="{{ payment.tickets_pdf_url }}" target="_blank"
-             class="inline-block rounded-xl bg-black text-white px-6 py-3">
-            Baixar ingressos (PDF)
-          </a>
-        {% endif %}
+        <div class="flex flex-col sm:flex-row gap-2 w-full justify-center mt-2">
+          {% if payment.tickets_pdf_url %}
+            <a href="{{ payment.tickets_pdf_url }}" target="_blank"
+               class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
+              Baixar ingressos (PDF)
+            </a>
+          {% endif %}
 
-        {% if payment.tickets_zip_url %}
-          <a href="{{ payment.tickets_zip_url }}" target="_blank"
-             class="inline-block rounded-xl border px-6 py-3">
-            Baixar (ZIP)
-          </a>
-        {% endif %}
+          {% if payment.tickets_zip_url %}
+            <a href="{{ payment.tickets_zip_url }}" target="_blank"
+               class="inline-block rounded-xl border px-6 py-3 text-center">
+              Baixar (ZIP)
+            </a>
+          {% endif %}
+        </div>
       </div>
     {% else %}
       <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-        <p class="text-zinc-600">Pagamento confirmado ✅</p>
+        <p class="text-green-700 font-medium">Pagamento confirmado ✅</p>
         <p class="text-sm text-zinc-500 mt-1">Estamos gerando seus arquivos para download…</p>
+        <p class="text-xs text-zinc-400 mt-2">Essa página atualiza automaticamente.</p>
         <script>
           setTimeout(() => window.location.reload(), 3000);
         </script>
       </div>
     {% endif %}
-  {% endif %}
 
+  {% elif payment and st == "pending" %}
+    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
+      <p class="text-zinc-800 font-medium">Pagamento em processamento</p>
+      <p class="text-sm text-zinc-500 mt-1">Assim que confirmar, os ingressos serão liberados automaticamente.</p>
+
+      <div class="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
+        {% if payment.id %}
+          <a href="{{ url_for('purchase.pay_pix', payment_id=payment.id) }}"
+             class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
+            Voltar para o QR Code (PIX)
+          </a>
+        {% endif %}
+        <a href="{{ url_for('purchase.pay_return', token=purchase.token) }}"
+           class="inline-block rounded-xl border px-6 py-3 text-center">
+          Ver status do pagamento
+        </a>
+      </div>
+
+      <script>
+        setTimeout(() => window.location.reload(), 5000);
+      </script>
+    </div>
+
+  {% elif payment and (st == "failed" or st == "expired" or st == "canceled" or st == "cancelled") %}
+    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
+      <p class="text-red-700 font-medium">Pagamento não concluído</p>
+      <p class="text-sm text-zinc-500 mt-1">
+        Esse pagamento foi finalizado como <span class="font-semibold">{{ payment.status }}</span>.
+        Gere um novo para liberar os ingressos.
+      </p>
+
+      <div class="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
+        <a href="{{ url_for('purchase.buy', event_slug=purchase.event.slug if purchase.event else 'sons-e-sabores') }}"
+           class="inline-block rounded-xl bg-black text-white px-6 py-3 text-center">
+          Gerar novo pagamento
+        </a>
+        <a href="{{ url_for('purchase.pay_return', token=purchase.token) }}"
+           class="inline-block rounded-xl border px-6 py-3 text-center">
+          Ver status do pagamento
+        </a>
+      </div>
+    </div>
+  {% endif %}
 
   <div class="mb-4 text-sm text-zinc-700 space-y-1">
     <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
@@ -46,6 +94,7 @@
     <button
       onclick="enviarTodosWhatsApp()"
       class="rounded-xl bg-black text-white py-3 text-sm font-medium"
+      {% if not (payment and st == "paid") %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}
     >
       Enviar todos no WhatsApp
     </button>
@@ -53,6 +102,7 @@
     <button
       onclick="copiarListaLinks()"
       class="rounded-xl border py-3 text-sm hover:bg-zinc-50"
+      {% if not (payment and st == "paid") %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}
     >
       Copiar lista de links
     </button>
@@ -126,9 +176,6 @@
 
 </div>
 
-<!-- ===================== -->
-<!-- SCRIPTS -->
-<!-- ===================== -->
 <script>
   function enviarTodosWhatsApp() {
     const links = [

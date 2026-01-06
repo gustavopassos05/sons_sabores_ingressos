@@ -1,82 +1,79 @@
-{% extends "base.html" %}
-{% block content %}
+# routes/purchase.py
+from flask import current_app
+from sqlalchemy import select
+from db import db
+from models import Purchase, Payment, Ticket
 
-<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5 text-center">
+@bp_purchase.get("/pay/return/<token>")
+def pay_return(token: str):
+    finalize_fn = current_app.extensions.get("finalize_purchase")
 
-  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
-  <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
 
-  {% if payment and payment.status == "paid" %}
+        # ✅ 1) payment pago (se existir) — evita cair no pending errado
+        payment_paid = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+            .order_by(Payment.id.desc())
+        )
 
-    {% if payment.tickets_pdf_url or payment.tickets_zip_url %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-col gap-2 items-center text-center">
-        <p class="text-green-700 font-medium">Pagamento confirmado ✅</p>
-        <p class="text-sm text-zinc-500">Seus ingressos já estão liberados.</p>
+        # ✅ 2) senão, pega o último (pending/failed/expired)
+        payment = payment_paid or s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(Payment.id.desc())
+        )
 
-        <a href="{{ url_for('tickets.purchase_public', token=purchase.token) }}"
-           class="mt-2 inline-block rounded-xl bg-black text-white px-6 py-3">
-          Ver ingressos
-        </a>
+        tickets = list(
+            s.scalars(
+                select(Ticket)
+                .where(Ticket.purchase_id == purchase.id)
+                .order_by(Ticket.id.asc())
+            )
+        )
 
-        <div class="mt-2 flex flex-col gap-2 items-center">
-          {% if payment.tickets_pdf_url %}
-            <a href="{{ payment.tickets_pdf_url }}" target="_blank"
-               class="inline-block rounded-xl border px-6 py-3">
-              Baixar PDF
-            </a>
-          {% endif %}
+        # ✅ se já está pago, mas ainda não gerou links, tenta finalizar (idempotente)
+        should_finalize = (
+            payment
+            and (payment.status or "").lower() == "paid"
+            and not payment.tickets_pdf_url
+            and callable(finalize_fn)
+        )
 
-          {% if payment.tickets_zip_url %}
-            <a href="{{ payment.tickets_zip_url }}" target="_blank"
-               class="inline-block rounded-xl border px-6 py-3">
-              Baixar ZIP
-            </a>
-          {% endif %}
-        </div>
+    # ⚠️ chama fora do "with db()" pra não misturar sessão
+    if should_finalize:
+        try:
+            finalize_fn(purchase.id)
+        except Exception:
+            pass
 
-        <p class="text-xs text-zinc-500 mt-3">Redirecionando automaticamente…</p>
-        <script>
-          setTimeout(() => {
-            window.location.href = "{{ url_for('tickets.purchase_public', token=purchase.token) }}";
-          }, 1500);
-        </script>
-      </div>
+        # recarrega depois do finalize
+        with db() as s:
+            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+            tickets = list(
+                s.scalars(
+                    select(Ticket)
+                    .where(Ticket.purchase_id == purchase.id)
+                    .order_by(Ticket.id.asc())
+                )
+            )
+            payment = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+                .order_by(Payment.id.desc())
+            ) or s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(Payment.id.desc())
+            )
 
-    {% else %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-        <p class="text-green-700 font-medium">Pagamento confirmado ✅</p>
-        <p class="text-sm text-zinc-500 mt-1">Estamos gerando seus arquivos para download…</p>
-        <p class="text-xs text-zinc-500 mt-2">Essa página vai atualizar automaticamente.</p>
-        <script>
-          setTimeout(() => window.location.reload(), 3000);
-        </script>
-      </div>
-    {% endif %}
-
-  {% else %}
-
-    <p class="text-zinc-700">
-      Seu pagamento está sendo processado.<br>
-      Assim que for confirmado, seus ingressos serão liberados automaticamente.
-    </p>
-
-    <div class="mt-5 flex flex-col gap-2 items-center">
-      <button type="button"
-              onclick="window.location.reload()"
-              class="rounded-xl border px-5 py-2 text-sm">
-        Atualizar agora
-      </button>
-      <p class="text-xs text-zinc-500">Verificando automaticamente…</p>
-    </div>
-
-    <p class="text-xs text-zinc-500 mt-3">Você pode fechar esta página com segurança.</p>
-
-    <script>
-      setTimeout(() => window.location.reload(), 5000);
-    </script>
-
-  {% endif %}
-
-</div>
-
-{% endblock %}
+    return render_template(
+        "payment_return.html",
+        purchase=purchase,
+        payment=payment,
+        tickets=tickets,          # ✅ AGORA TEM
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )
