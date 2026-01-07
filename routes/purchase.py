@@ -2,48 +2,32 @@
 import os
 import secrets
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
-from sqlalchemy import select, desc, and_
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from sqlalchemy import select, and_
 
 from db import db
-from models import Event, Purchase, Payment, Ticket
+from models import Event, Purchase, Payment
+
 from app_services.payments.pagbank_checkout import create_checkout_redirect
 
 bp_purchase = Blueprint("purchase", __name__)
 
+
 def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
 
-def _cpf_allowed(cpf_digits: str) -> bool:
-    """
-    CPF_ALLOWLIST="11122233344,55566677788"
-    Se vazio/não configurado -> libera geral (mas você quer travar, então configure).
-    """
-    allow_raw = (os.getenv("CPF_ALLOWLIST") or "").strip()
-    if not allow_raw:
-        return True
-    allow = {_digits(x) for x in allow_raw.split(",") if _digits(x)}
-    return cpf_digits in allow
 
-def _is_expired_payment(p: Payment) -> bool:
-    # regra simples: status failed/expired/canceled
-    st = (p.status or "").lower().strip()
-    return st in {"failed", "expired", "canceled", "cancelled"}
+def _brl_from_cents(cents: int) -> str:
+    v = (Decimal(cents) / Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return format(v, "f")  # "1.00", "3.00", etc
 
-@bp_purchase.get("/buy/<event_slug>")
-def buy(event_slug: str):
-    with db() as s:
-        ev = s.scalar(select(Event).where(Event.slug == event_slug))
-        if not ev:
-            abort(404)
 
-    return render_template(
-        "buy.html",
-        event=ev,
-        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
-        form={},  # mantém
-    )
+def _is_payment_open(p: Payment) -> bool:
+    # Ajuste se você tiver outros status "abertos"
+    return (p.status or "").lower() in {"pending", "pending_payment", "waiting_payment", "in_process"}
+
 
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
@@ -65,71 +49,79 @@ def buy_post(event_slug: str):
         flash("Nome do comprador é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    cpf_digits = "".join(c for c in buyer_cpf if c.isdigit())
+    # CPF normalizado
+    cpf_digits = _digits(buyer_cpf)
+    if not cpf_digits:
+        flash("CPF é obrigatório.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
 
+    # Convidados
     guests_raw = (request.form.get("guests_text") or "").strip()
     guests_lines = [x.strip() for x in guests_raw.splitlines() if x.strip()]
     guests_text = "\n".join(guests_lines)
 
-    # preço (você pediu 1,00)
+    # Preço e total (centavos, sem float)
+    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # 1,00 = 100
     total_people = 1 + len(guests_lines)
-    total_cents = 100 * total_people
-    total_brl = total_cents / 100
+    total_cents = price_cents_unit * total_people
+    total_brl_str = _brl_from_cents(total_cents)
 
+    # Token público (caso precise criar nova)
     purchase_token = secrets.token_urlsafe(24)
-
-    checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
-    redirect_url = f"{base_url}/pay/return/{purchase_token}"
 
     with db() as s:
         ev = s.scalar(select(Event).where(Event.slug == event_slug))
         if not ev:
             abort(404)
 
-        # 🔒 REGRA: se já existe compra para esse CPF+show+evento
-        # - se pendente: reaproveita
-        # - se paga: manda pra ingressos
-        existing = None
-        if cpf_digits:
-            existing = s.scalar(
-                select(Purchase)
-                .where(
-                    Purchase.event_id == ev.id,
-                    Purchase.show_name == show_name,
-                    Purchase.buyer_cpf_digits == cpf_digits,
-                )
-                .order_by(Purchase.id.desc())
+        # =========================================================
+        # 1) TRAVA: mesma pessoa (cpf) no mesmo show do mesmo evento
+        # =========================================================
+        existing_purchase = s.scalar(
+            select(Purchase)
+            .where(
+                Purchase.event_id == ev.id,
+                Purchase.show_name == show_name,
+                Purchase.buyer_cpf_digits == cpf_digits,
             )
+            .order_by(Purchase.id.desc())
+        )
 
-        if existing:
-            last_payment_paid = s.scalar(
+        if existing_purchase:
+            # pega o payment mais recente dessa compra
+            existing_payment = s.scalar(
                 select(Payment)
-                .where(Payment.purchase_id == existing.id, Payment.status == "paid")
-                .order_by(Payment.id.desc())
-            )
-            if last_payment_paid:
-                return redirect(url_for("tickets.purchase_public", token=existing.token))
-
-            last_payment = s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == existing.id)
+                .where(Payment.purchase_id == existing_purchase.id)
                 .order_by(Payment.id.desc())
             )
 
-            # pendente com checkout_url → reabre
-            if last_payment and (last_payment.status or "").lower() == "pending" and getattr(last_payment, "checkout_url", None):
-                return redirect(last_payment.checkout_url)
+            # Se já está pago -> manda para ingressos
+            if (existing_purchase.status or "").lower() == "paid" or (
+                existing_payment and (existing_payment.status or "").lower() == "paid"
+            ):
+                return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
 
-            # se falhou/expirou → deixa criar nova
-            # cai e cria nova compra
+            # Se está pendente -> reabre pagamento existente
+            if existing_payment and _is_payment_open(existing_payment):
+                # se tiver checkout_url salva, volta direto pro PagBank
+                if getattr(existing_payment, "checkout_url", None):
+                    return redirect(existing_payment.checkout_url)
 
+                # senão, manda pra página de retorno, que deve mostrar "Ir para o pagamento"
+                return redirect(url_for("purchase.pay_return", token=existing_purchase.token))
+
+            # Se está failed/expired -> deixa criar nova (continua)
+
+        # =========================================================
+        # 2) cria uma NOVA purchase + payment (Checkout PagBank)
+        # =========================================================
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
             show_name=show_name,
             buyer_name=buyer_name,
             buyer_cpf=buyer_cpf,
-            buyer_cpf_digits=cpf_digits if cpf_digits else None,
+            buyer_cpf_digits=cpf_digits,   # ✅ importante
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             guests_text=guests_text,
@@ -139,16 +131,19 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # ✅ cria checkout redirect (PagBank decide PIX ou cartão lá)
+        checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
+        redirect_url = f"{base_url}/pay/return/{purchase.token}"
+
+        # Checkout Redirect (PagBank decide PIX ou cartão na tela deles)
         checkout_id, checkout_url = create_checkout_redirect(
             reference=f"purchase-{purchase.id}",
             item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_brl=total_brl,
+            amount_brl=total_brl_str,  # ✅ string "X.XX"
             buyer_name=buyer_name,
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             buyer_cpf=buyer_cpf,
-            redirect_url=f"{base_url}/pay/return/{purchase.token}",
+            redirect_url=redirect_url,
             payment_notification_url=checkout_notification_url,
             checkout_notification_url=None,
         )
@@ -160,88 +155,10 @@ def buy_post(event_slug: str):
             currency="BRL",
             status="pending",
             external_id=checkout_id,
-            checkout_url=checkout_url,   # ✅ precisa existir na model + coluna
+            checkout_url=checkout_url,   # ✅ reabrir pagamento depois
             paid_at=None,
         )
         s.add(payment)
         s.commit()
 
         return redirect(checkout_url)
-
-@bp_purchase.get("/pay/return/<token>")
-def pay_return(token: str):
-    finalize_fn = current_app.extensions.get("finalize_purchase")
-
-    with db() as s:
-        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-        if not purchase:
-            abort(404)
-
-        payment_paid = s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-            .order_by(Payment.id.desc())
-        )
-
-        payment = payment_paid or s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id)
-            .order_by(Payment.id.desc())
-        )
-
-        tickets = list(
-            s.scalars(
-                select(Ticket)
-                .where(Ticket.purchase_id == purchase.id)
-                .order_by(Ticket.id.asc())
-            )
-        )
-
-        should_finalize = (
-            payment
-            and (payment.status or "").lower() == "paid"
-            and not (payment.tickets_pdf_url or payment.tickets_zip_url)
-            and callable(finalize_fn)
-        )
-
-    if should_finalize:
-        try:
-            finalize_fn(purchase.id)
-        except Exception:
-            pass
-
-        with db() as s:
-            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-            tickets = list(
-                s.scalars(
-                    select(Ticket)
-                    .where(Ticket.purchase_id == purchase.id)
-                    .order_by(Ticket.id.asc())
-                )
-            )
-            payment = s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-                .order_by(Payment.id.desc())
-            ) or s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == purchase.id)
-                .order_by(Payment.id.desc())
-            )
-
-    return render_template(
-        "payment_return.html",
-        purchase=purchase,
-        payment=payment,
-        tickets=tickets,
-    )
-
-@bp_purchase.get("/pay/<int:payment_id>")
-def pay_pix(payment_id: int):
-    with db() as s:
-        p = s.get(Payment, payment_id)
-        if not p:
-            abort(404)
-    if getattr(p, "checkout_url", None):
-        return redirect(p.checkout_url)
-    abort(404)
