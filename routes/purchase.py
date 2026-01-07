@@ -28,7 +28,6 @@ def _is_payment_open(p: Payment) -> bool:
     # Ajuste se você tiver outros status "abertos"
     return (p.status or "").lower() in {"pending", "pending_payment", "waiting_payment", "in_process"}
 
-
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
     base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
@@ -49,24 +48,32 @@ def buy_post(event_slug: str):
         flash("Nome do comprador é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # CPF normalizado
     cpf_digits = _digits(buyer_cpf)
     if not cpf_digits:
         flash("CPF é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # Convidados
+    # ✅ convidados: aceita linhas OU separados por vírgula/;
     guests_raw = (request.form.get("guests_text") or "").strip()
-    guests_lines = [x.strip() for x in guests_raw.splitlines() if x.strip()]
+
+    # quebra por linha primeiro
+    tmp = []
+    for line in guests_raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # se a pessoa colou "a, b; c"
+        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
+        tmp.extend(parts)
+
+    guests_lines = tmp
     guests_text = "\n".join(guests_lines)
 
-    # Preço e total (centavos, sem float)
-    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # 1,00 = 100
-    total_people = 1 + len(guests_lines)
+    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # 1,00
+    total_people = 1 + len(guests_lines)  # ✅ inclui comprador sempre
     total_cents = price_cents_unit * total_people
     total_brl_str = _brl_from_cents(total_cents)
 
-    # Token público (caso precise criar nova)
     purchase_token = secrets.token_urlsafe(24)
 
     with db() as s:
@@ -74,9 +81,6 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # =========================================================
-        # 1) TRAVA: mesma pessoa (cpf) no mesmo show do mesmo evento
-        # =========================================================
         existing_purchase = s.scalar(
             select(Purchase)
             .where(
@@ -88,40 +92,35 @@ def buy_post(event_slug: str):
         )
 
         if existing_purchase:
-            # pega o payment mais recente dessa compra
             existing_payment = s.scalar(
                 select(Payment)
                 .where(Payment.purchase_id == existing_purchase.id)
                 .order_by(Payment.id.desc())
             )
 
-            # Se já está pago -> manda para ingressos
+            # pago -> ingressos
             if (existing_purchase.status or "").lower() == "paid" or (
                 existing_payment and (existing_payment.status or "").lower() == "paid"
             ):
                 return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
 
-            # Se está pendente -> reabre pagamento existente
+            # ✅ pendente -> reabrir SOMENTE se a lista de convidados for igual
+            # se mudou, cria nova compra (pra não reutilizar valor antigo)
             if existing_payment and _is_payment_open(existing_payment):
-                # se tiver checkout_url salva, volta direto pro PagBank
-                if getattr(existing_payment, "checkout_url", None):
+                same_guests = (existing_purchase.guests_text or "").strip() == guests_text.strip()
+                if same_guests and getattr(existing_payment, "checkout_url", None):
                     return redirect(existing_payment.checkout_url)
 
-                # senão, manda pra página de retorno, que deve mostrar "Ir para o pagamento"
-                return redirect(url_for("purchase.pay_return", token=existing_purchase.token))
+                # se mudou convidados, deixa criar nova
 
-            # Se está failed/expired -> deixa criar nova (continua)
-
-        # =========================================================
-        # 2) cria uma NOVA purchase + payment (Checkout PagBank)
-        # =========================================================
+        # cria nova compra
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
             show_name=show_name,
             buyer_name=buyer_name,
             buyer_cpf=buyer_cpf,
-            buyer_cpf_digits=cpf_digits,   # ✅ importante
+            buyer_cpf_digits=cpf_digits,
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
             guests_text=guests_text,
@@ -134,11 +133,10 @@ def buy_post(event_slug: str):
         checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
         redirect_url = f"{base_url}/pay/return/{purchase.token}"
 
-        # Checkout Redirect (PagBank decide PIX ou cartão na tela deles)
         checkout_id, checkout_url = create_checkout_redirect(
             reference=f"purchase-{purchase.id}",
             item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_brl=total_brl_str,  # ✅ string "X.XX"
+            amount_brl=total_brl_str,
             buyer_name=buyer_name,
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
@@ -155,7 +153,7 @@ def buy_post(event_slug: str):
             currency="BRL",
             status="pending",
             external_id=checkout_id,
-            checkout_url=checkout_url,   # ✅ reabrir pagamento depois
+            checkout_url=checkout_url,
             paid_at=None,
         )
         s.add(payment)
