@@ -79,7 +79,7 @@ def buy_post(event_slug: str):
         flash("CPF é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # ✅ trava allowlist
+    # ✅ trava allowlist (soft launch)
     if not _cpf_allowed(cpf_digits):
         flash("Este CPF ainda não está liberado para compra.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
@@ -112,7 +112,9 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
+        # ===============================
         # Anti-duplicidade (CPF + show + evento)
+        # ===============================
         existing_purchase = s.scalar(
             select(Purchase)
             .where(
@@ -126,7 +128,7 @@ def buy_post(event_slug: str):
         if existing_purchase:
             existing_payment = s.scalar(
                 select(Payment)
-                .where(Payment.purchase_id == existing_purchase.id, Payment.provider == "pagbank")
+                .where(Payment.purchase_id == existing_purchase.id)
                 .order_by(Payment.id.desc())
             )
 
@@ -140,10 +142,15 @@ def buy_post(event_slug: str):
             if existing_payment and _is_open_payment(existing_payment) and not _is_expired_payment(existing_payment):
                 same_guests = (existing_purchase.guests_text or "").strip() == guests_text.strip()
                 if same_guests:
-                    return redirect(url_for("purchase.pay_pix", payment_id=existing_payment.id))
+                    if existing_payment.provider == "pagbank":
+                        return redirect(url_for("purchase.pay_pix", payment_id=existing_payment.id))
+                    if existing_payment.provider == "manual_pix":
+                        return redirect(url_for("purchase.pay_manual", token=existing_purchase.token))
                 # mudou convidados -> cria nova
 
+        # ===============================
         # cria nova compra
+        # ===============================
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
@@ -163,35 +170,57 @@ def buy_post(event_slug: str):
         # webhook PIX Orders
         pagbank_notification_url = f"{base_url}/webhooks/pagbank"
 
-        # cria order pix
-        order_id, qr_text, qr_b64, expires_at = create_pix_order(
-            reference_id=f"purchase-{purchase.id}",
-            buyer_name=buyer_name,
-            buyer_email=buyer_email,
-            buyer_tax_id=cpf_digits,
-            buyer_phone_digits=buyer_phone,
-            item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_cents=total_cents,
-            notification_url=pagbank_notification_url,
-            expires_minutes=exp_min,
-        )
+        # ===============================
+        # TENTA PIX Orders API -> se der 403/whitelist, cai no PIX manual
+        # ===============================
+        try:
+            order_id, qr_text, qr_b64, expires_at = create_pix_order(
+                reference_id=f"purchase-{purchase.id}",
+                buyer_name=buyer_name,
+                buyer_email=buyer_email,
+                buyer_tax_id=cpf_digits,
+                buyer_phone_digits=buyer_phone,
+                item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+                amount_cents=total_cents,
+                notification_url=pagbank_notification_url,
+                expires_minutes=exp_min,
+            )
 
-        payment = Payment(
-            purchase_id=purchase.id,
-            provider="pagbank",
-            amount_cents=total_cents,
-            currency="BRL",
-            status="pending",
-            external_id=order_id,
-            qr_text=qr_text,
-            qr_image_base64=qr_b64,
-            expires_at=(expires_at.replace(tzinfo=None) if expires_at else expires_at_local),
-            paid_at=None,
-        )
-        s.add(payment)
-        s.commit()
+            payment = Payment(
+                purchase_id=purchase.id,
+                provider="pagbank",
+                amount_cents=total_cents,
+                currency="BRL",
+                status="pending",
+                external_id=order_id,
+                qr_text=qr_text,
+                qr_image_base64=qr_b64,
+                expires_at=(expires_at.replace(tzinfo=None) if expires_at else expires_at_local),
+                paid_at=None,
+            )
+            s.add(payment)
+            s.commit()
 
-        return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
+            return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
+
+        except Exception as e:
+            # ✅ fallback manual (não estoura 500 no usuário)
+            current_app.logger.warning("[PIX FALLBACK] create_pix_order falhou: %s", e)
+
+            payment = Payment(
+                purchase_id=purchase.id,
+                provider="manual_pix",
+                amount_cents=total_cents,
+                currency="BRL",
+                status="pending",
+                external_id=None,
+                expires_at=expires_at_local,
+                paid_at=None,
+            )
+            s.add(payment)
+            s.commit()
+
+            return redirect(url_for("purchase.pay_manual", token=purchase.token))
 
 
 @bp_purchase.get("/pay/<int:payment_id>")
@@ -309,3 +338,41 @@ def pay_return(token: str):
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
 
+@bp_purchase.get("/pay/manual/<token>")
+def pay_manual(token: str):
+    pix_key = (os.getenv("PIX_MANUAL_KEY") or "").strip()
+    whatsapp_number = _digits(os.getenv("WHATSAPP_NUMBER", "")).strip()
+    receiver = (os.getenv("PIX_MANUAL_RECEIVER_NAME") or "").strip()
+    bank = (os.getenv("PIX_MANUAL_BANK") or "").strip()
+
+    # QR estático opcional: coloque um arquivo em static/pix_qr.png
+    qr_image_url = url_for("static", filename="pix_qr.png") if os.path.exists("static/pix_qr.png") else ""
+
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+
+        payment_paid = s.scalar(
+            select(Payment).where(Payment.purchase_id == purchase.id, Payment.status == "paid").order_by(Payment.id.desc())
+        )
+        if payment_paid:
+            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+
+        payment = s.scalar(
+            select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc())
+        )
+        if not payment:
+            abort(404)
+
+    return render_template(
+        "pay_manual.html",
+        purchase=purchase,
+        payment=payment,
+        pix_key=pix_key,
+        qr_image_url=qr_image_url,
+        whatsapp_number=whatsapp_number,
+        receiver=receiver,
+        bank=bank,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )

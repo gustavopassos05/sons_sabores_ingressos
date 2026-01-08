@@ -1,124 +1,121 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="bg-white rounded-2xl shadow p-5">
-  <h2 class="text-xl font-semibold">Comprar ingresso — {{ event.name }}</h2>
 
-  <div class="mt-3 rounded-xl bg-zinc-50 border p-3 text-sm text-zinc-700">
-    <div class="font-semibold">Como funciona</div>
-    <ul class="list-disc pl-5 mt-1 space-y-1">
-      <li>O valor é <b>por pessoa</b>.</li>
-      <li>Você precisa informar <b>nome e sobrenome</b> do comprador e de cada acompanhante.</li>
-      <li>Escreva <b>1 pessoa por linha</b> em “Acompanhantes”.</li>
-    </ul>
-  </div>
+<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
+  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
+  <p class="text-sm text-zinc-500 mb-4">Compra de ingressos</p>
 
-  <!-- ✅ action certo + POST -->
-  <form
-    method="post"
-    action="{{ url_for('purchase.buy_post', event_slug=event.slug) }}"
-    class="mt-4 grid gap-3"
-  >
+  <form method="POST" action="{{ url_for('purchase.buy_post', event_slug=event.slug) }}" class="space-y-4">
+
     <div>
-      <label class="text-sm text-zinc-600">Show *</label>
-      <select name="show_name" class="w-full rounded-xl border p-3" required>
-        <option value="" disabled selected>Selecione o show</option>
-        <option value="Jimmy Duchowny e Mark Lambert">Jimmy Duchowny e Mark Lambert</option>
-        <option value="Rodrigo Quintela">Rodrigo Quintela</option>
-        <option value="Alexandre Araújo">Alexandre Araújo</option>
-        <option value="Thiago Delegado">Thiago Delegado</option>
-        <option value="Hudson de Souza">Hudson de Souza</option>
-        <option value="Alexandre Rezende">Alexandre Rezende</option>
-        <option value="Marilton">Marilton Borges e Rodrigo Borges</option>
+      <label class="text-sm text-zinc-600">Show</label>
+      <select name="show_name" class="w-full rounded-xl border p-3 text-sm" required>
+        <option value="">Selecione…</option>
+        {% for s in (config.SHOWS if config and config.SHOWS else []) %}
+          <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
       </select>
+      <p class="text-xs text-zinc-500 mt-1">Escolha o show para esta compra.</p>
     </div>
 
-    <div>
-      <label class="text-sm text-zinc-600">Nome do comprador (nome e sobrenome) *</label>
-      <input name="buyer_name" class="w-full rounded-xl border p-3" required placeholder="Ex: Gustavo Passos">
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
-        <label class="text-sm text-zinc-600">CPF</label>
-        <input name="buyer_cpf" class="w-full rounded-xl border p-3" placeholder="Somente números ou com máscara">
+        <label class="text-sm text-zinc-600">Nome do comprador</label>
+        <input name="buyer_name" class="w-full rounded-xl border p-3 text-sm" required />
+      </div>
+      <div>
+        <label class="text-sm text-zinc-600">CPF do comprador</label>
+        <input name="buyer_cpf" class="w-full rounded-xl border p-3 text-sm" required />
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label class="text-sm text-zinc-600">E-mail</label>
+        <input name="buyer_email" type="email" class="w-full rounded-xl border p-3 text-sm" />
       </div>
       <div>
         <label class="text-sm text-zinc-600">Telefone</label>
-        <input
-          name="buyer_phone"
-          id="buyer_phone"
-          type="tel"
-          inputmode="tel"
-          autocomplete="tel"
-          placeholder="(31) 99999-9999"
-          class="w-full rounded-xl border p-3"
-        >
+        <input name="buyer_phone" class="w-full rounded-xl border p-3 text-sm" />
       </div>
     </div>
 
     <div>
-      <label class="text-sm text-zinc-600">E-mail</label>
-      <input name="buyer_email" type="email" class="w-full rounded-xl border p-3">
-    </div>
-
-    <div>
-      <label class="text-sm text-zinc-600">Acompanhantes (1 por linha, nome e sobrenome)</label>
-      <textarea
-        name="guests_text"
-        rows="5"
-        class="w-full rounded-xl border p-3"
-        placeholder="Ex:
-Aline Souza
-Luana Junqueira
-Leonora Pinto"
-      ></textarea>
-
-      <p class="text-xs text-zinc-500 mt-2">
-        Dica: cada linha vira um ingresso separado.
+      <label class="text-sm text-zinc-600">Convidados (1 por linha ou separado por vírgula/;)</label>
+      <textarea id="guests_text" name="guests_text" rows="5"
+                class="w-full rounded-xl border p-3 text-sm"
+                placeholder="Ex: Maria&#10;João&#10;Ana, Pedro; Carla"></textarea>
+      <p class="text-xs text-zinc-500 mt-1">
+        O comprador já conta como 1 pessoa. Aqui você adiciona as demais.
       </p>
     </div>
 
-    <!-- ✅ botão submit -->
-    <button type="submit" class="mt-2 w-full rounded-xl bg-black text-white py-3 font-medium">
-      Ir para o pagamento
+    <!-- ✅ PREVIEW DO TOTAL -->
+    <div class="rounded-2xl border p-4 bg-zinc-50">
+      <div class="text-sm text-zinc-700 space-y-1">
+        <div><span class="font-semibold">Valor por pessoa:</span> <span id="unit_price_lbl">R$ 1,00</span></div>
+        <div><span class="font-semibold">Total de pessoas:</span> <span id="total_people_lbl">1</span></div>
+        <div class="text-base">
+          <span class="font-semibold">Total a pagar:</span> <span id="total_price_lbl">R$ 1,00</span>
+        </div>
+      </div>
+      <p class="text-xs text-zinc-500 mt-2">
+        Esta é uma prévia. O valor final é calculado no servidor.
+      </p>
+    </div>
+
+    <button type="submit" class="w-full rounded-xl bg-black text-white py-3 font-medium">
+      Ir para pagamento
     </button>
+
   </form>
 </div>
 
 <script>
-  (function () {
-    const input = document.getElementById("buyer_phone");
-    if (!input) return;
+  // 🔧 pega do backend via env (render) se você quiser:
+  // Como template não lê env direto, deixo default 100 (R$1,00).
+  // Se quiser passar esse valor do Flask pro template, eu te mostro.
+  const ticketPriceCents = 100;
 
-    function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
+  function parseGuests(raw) {
+    raw = (raw || "").trim();
+    if (!raw) return [];
 
-    function formatBRPhone(digits) {
-      digits = digits.slice(0, 11);
-      const ddd = digits.slice(0, 2);
-      const rest = digits.slice(2);
-      if (!ddd) return "";
+    const lines = raw.split(/\r?\n/);
+    let names = [];
 
-      if (digits.length <= 10) {
-        const p1 = rest.slice(0, 4);
-        const p2 = rest.slice(4, 8);
-        if (!p1) return `(${ddd}`;
-        if (!p2) return `(${ddd}) ${p1}`;
-        return `(${ddd}) ${p1}-${p2}`;
-      } else {
-        const p1 = rest.slice(0, 5);
-        const p2 = rest.slice(5, 9);
-        if (!p1) return `(${ddd}`;
-        if (!p2) return `(${ddd}) ${p1}`;
-        return `(${ddd}) ${p1}-${p2}`;
+    for (const line of lines) {
+      const cleaned = (line || "").trim();
+      if (!cleaned) continue;
+
+      // separa por ; e ,
+      const parts = cleaned.replace(/;/g, ",").split(",");
+      for (const p of parts) {
+        const name = (p || "").trim();
+        if (name) names.push(name);
       }
     }
+    return names;
+  }
 
-    function applyMask() {
-      input.value = formatBRPhone(onlyDigits(input.value));
-    }
+  function formatBRLFromCents(cents) {
+    const v = (cents / 100).toFixed(2).replace(".", ",");
+    return "R$ " + v;
+  }
 
-    input.addEventListener("input", applyMask);
-    input.addEventListener("blur", applyMask);
-  })();
+  function updatePreview() {
+    const guestsRaw = document.getElementById("guests_text").value;
+    const guests = parseGuests(guestsRaw);
+    const totalPeople = 1 + guests.length;
+    const totalCents = totalPeople * ticketPriceCents;
+
+    document.getElementById("unit_price_lbl").textContent = formatBRLFromCents(ticketPriceCents);
+    document.getElementById("total_people_lbl").textContent = String(totalPeople);
+    document.getElementById("total_price_lbl").textContent = formatBRLFromCents(totalCents);
+  }
+
+  document.getElementById("guests_text").addEventListener("input", updatePreview);
+  updatePreview();
 </script>
+
 {% endblock %}

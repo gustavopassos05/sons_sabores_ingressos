@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
+
+  <h2 class="text-2xl font-semibold mb-1">Pagamento via Pix</h2>
+  <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
+
+  <div class="p-3 rounded-xl bg-yellow-100 border border-yellow-300 text-yellow-900 mb-4">
+    <div class="font-semibold">Aguardando pagamento…</div>
+    <div class="text-sm text-yellow-900/80">
+      Faça o Pix e envie o comprovante no WhatsApp. Assim que confirmarmos, seus ingressos serão liberados automaticamente.
+    </div>
+  </div>
+
+  <div class="text-sm text-zinc-700 space-y-1 mb-4">
+    <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
+    <div><span class="font-semibold">Total:</span> R$ {{ '%.2f'|format((payment.amount_cents or 0) / 100) }}</div>
+  </div>
+
+  {% if pix_key %}
+    <div class="rounded-xl border p-4">
+      <div class="font-semibold mb-2">Chave Pix</div>
+      <div class="text-xs text-zinc-500 break-all mb-2">{{ pix_key }}</div>
+
+      <button
+        class="w-full rounded-xl border py-3 font-medium"
+        onclick="navigator.clipboard.writeText('{{ pix_key }}'); alert('Chave Pix copiada ✅');"
+      >
+        Copiar chave Pix
+      </button>
+    </div>
+  {% endif %}
+
+  {% if qr_image_url %}
+    <div class="my-5 flex justify-center">
+      <img src="{{ qr_image_url }}" alt="QR Code Pix" class="w-64 h-64 border rounded-xl">
+    </div>
+  {% endif %}
+
+  {% set wa_text =
+    "Olá! Fiz o Pix do Sons & Sabores ✅\n\n" ~
+    "Show: " ~ purchase.show_name ~ "\n" ~
+    "Comprador: " ~ purchase.buyer_name ~ "\n" ~
+    "Total: R$ " ~ ('%.2f'|format((payment.amount_cents or 0)/100)) ~ "\n\n" ~
+    "Token da compra: " ~ purchase.token ~ "\n" ~
+    "Segue o comprovante:" %}
+  {% set wa_link = "https://wa.me/" ~ whatsapp_number ~ "?text=" ~ wa_text|urlencode %}
+
+  <a href="{{ wa_link }}" target="_blank" rel="noopener"
+     class="mt-4 inline-flex w-full justify-center rounded-xl bg-black text-white py-3 font-medium">
+    Enviar comprovante no WhatsApp
+  </a>
+
+  <div class="mt-4 text-center text-xs text-zinc-500">
+    Depois de enviar o comprovante, você pode fechar esta página.
+  </div>
+
+</div>
+{% endblock %}
