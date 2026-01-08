@@ -2,12 +2,12 @@
 {% block content %}
 <div class="max-w-2xl mx-auto">
 
-  {# --- cálculos de exibição --- #}
-  {% set total_people = 1 + ((purchase.guests_text or '').splitlines() | select('string') | list | length) %}
-  {% set unit_price = (ticket_price_cents or 5000) / 100 %}
+  {# --- cálculos de exibição (preferir backend) --- #}
+  {% set total_people = total_people if total_people is defined else 1 + ((purchase.guests_text or '').splitlines() | length) %}
+  {% set unit_price = (ticket_price_cents if ticket_price_cents is defined else 100) / 100 %}
   {% set total_price = (payment.amount_cents or 0) / 100 %}
 
-  {% if payment.status == "paid" %}
+  {% if (payment.status or '')|lower == "paid" %}
     <div class="p-3 rounded-xl bg-green-100 border border-green-300 text-green-900 mb-4">
       <div class="font-semibold">Pagamento confirmado ✅</div>
       <div class="text-sm text-green-900/80">
@@ -91,11 +91,15 @@
       {% endif %}
 
       <form method="post" action="{{ url_for('purchase.pay_refresh', payment_id=payment.id) }}" class="mt-4">
-
         <button class="w-full rounded-xl border py-3 font-medium">
           Já paguei — atualizar status
         </button>
       </form>
+
+      <script>
+        // auto-refresh leve (opcional)
+        setTimeout(() => window.location.reload(), 6000);
+      </script>
     </div>
   {% endif %}
 </div>

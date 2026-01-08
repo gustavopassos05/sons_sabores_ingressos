@@ -11,17 +11,8 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Payment, Ticket, Event
-
-from app_services.ticket_generator import (
-    generate_single_ticket_png,
-    make_qr_image,
-    paste_qr_on_png,
-)
+from app_services.ticket_generator import generate_single_ticket_png, make_qr_image, paste_qr_on_png
 from app_services.ftp_uploader import upload_file
-
-
-def _digits(s: str) -> str:
-    return "".join(c for c in (s or "") if c.isdigit())
 
 
 def _names_from_purchase(p: Purchase) -> List[str]:
@@ -63,8 +54,6 @@ def finalize_purchase_factory() -> Callable[[int], None]:
         if not public_base:
             raise RuntimeError("FTP_PUBLIC_BASE não configurado (URL pública dos arquivos no HostGator).")
 
-        remote_prefix = (os.getenv("TICKETS_REMOTE_PREFIX") or "ingressos").strip().strip("/")
-
         base_url = (current_app.config.get("BASE_URL") or "").rstrip("/")
         if not base_url:
             raise RuntimeError("BASE_URL não configurado.")
@@ -74,7 +63,13 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if not purchase:
                 return
 
-            payment: Optional[Payment] = s.scalar(
+            # ✅ PEGA O PAYMENT PAGO PRIMEIRO
+            payment_paid: Optional[Payment] = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+                .order_by(Payment.id.desc())
+            )
+            payment: Optional[Payment] = payment_paid or s.scalar(
                 select(Payment)
                 .where(Payment.purchase_id == purchase.id)
                 .order_by(Payment.id.desc())
@@ -86,7 +81,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if (purchase.status or "").lower() != "paid" or (payment.status or "").lower() != "paid":
                 return
 
-            # idempotência: se já gerou link, sai
+            # idempotência
             if getattr(payment, "tickets_pdf_url", None):
                 return
 
@@ -94,16 +89,11 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             event_slug = (ev.slug if ev else "evento")
             show_name = purchase.show_name or ""
 
-            names = _names_from_purchase(purchase)
-            if not names:
-                names = ["Convidado"]
+            names = _names_from_purchase(purchase) or ["Convidado"]
 
-            # pasta local
             local_dir = (storage_dir / "tickets" / purchase.token).resolve()
             local_dir.mkdir(parents=True, exist_ok=True)
 
-            # QR aponta pra página pública do ingresso/compra
-            # ajuste se sua rota real for diferente
             qr_target_url = f"{base_url}/purchase/{purchase.token}"
             qr_img = make_qr_image(qr_target_url, size_px=360)
 
@@ -120,17 +110,17 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                     buyer_phone=purchase.buyer_phone,
                     person_name=person_name,
                     person_type="buyer" if idx == 1 else "guest",
-                    token=secrets.token_urlsafe(18),  # token individual do ticket
+                    token=secrets.token_urlsafe(18),
                     status="issued",
                     issued_at=datetime.utcnow(),
                 )
                 s.add(t)
-                s.flush()  # garante t.id
+                s.flush()
 
                 png_path = generate_single_ticket_png(
                     storage_dir=local_dir,
                     event_slug=event_slug,
-                    ticket_id=t.id,               # id real do ticket
+                    ticket_id=t.id,
                     person_name=person_name,
                     show_name=show_name,
                     base_image_path=base_image_path,
@@ -143,23 +133,17 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 t.png_path = str(png_path)
                 created_tickets.append(t)
 
-            # gera PDF com todos
             pdf_path = (local_dir / "ingressos.pdf").resolve()
             _make_pdf_from_pngs(png_paths, pdf_path)
 
-            # salva pdf_path em todos tickets (mesmo pdf)
             for t in created_tickets:
                 t.pdf_path = str(pdf_path)
 
-            # zip
             zip_path = (local_dir / "ingressos.zip").resolve()
             _make_zip([pdf_path] + png_paths, zip_path)
 
-            # upload FTP
-            # upload FTP (sem subpastas, mais seguro)
             pdf_remote = f"{purchase.token}-ingressos.pdf"
             zip_remote = f"{purchase.token}-ingressos.zip"
-
 
             ok_pdf, info_pdf = upload_file(pdf_path, pdf_remote)
             if not ok_pdf:
@@ -173,11 +157,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             payment.tickets_zip_url = f"{public_base}/{zip_remote}"
             payment.tickets_generated_at = datetime.utcnow()
 
-            print("[FINALIZE] Gerando ingressos para purchase", purchase.id)
-            print("[FINALIZE] Enviando PDF:", pdf_remote)
-            print("[FINALIZE] Enviando ZIP:", zip_remote)
-            print("[FINALIZE] URLs:", payment.tickets_pdf_url, payment.tickets_zip_url)
-
+            print("[FINALIZE] purchase", purchase.id, "PDF", payment.tickets_pdf_url, "ZIP", payment.tickets_zip_url)
 
             s.commit()
 

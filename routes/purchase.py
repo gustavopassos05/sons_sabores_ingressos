@@ -1,15 +1,14 @@
 # routes/purchase.py
 import os
 import secrets
-from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
 from sqlalchemy import select
 
 from db import db
 from models import Event, Purchase, Payment, Ticket
-from app_services.payments.pagbank_checkout import create_checkout_redirect
+from pagbank import create_pix_order  # Orders API (PIX)
 
 bp_purchase = Blueprint("purchase", __name__)
 
@@ -18,13 +17,26 @@ def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
 
 
-def _brl_from_cents(cents: int) -> str:
-    v = (Decimal(cents) / Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return format(v, "f")  # "1.00", "3.00", etc
+def _cpf_allowed(cpf_digits: str) -> bool:
+    # CPF_ALLOWLIST="11122233344,55566677788"
+    raw = (os.getenv("CPF_ALLOWLIST") or "").strip()
+    if not raw:
+        return True
+    allow = {_digits(x) for x in raw.split(",") if _digits(x)}
+    return cpf_digits in allow
 
 
-def _is_payment_open(p: Payment) -> bool:
-    return (p.status or "").lower() in {"pending", "pending_payment", "waiting_payment", "in_process"}
+def _is_open_payment(p: Payment) -> bool:
+    return (p.status or "").lower() == "pending"
+
+
+def _is_expired_payment(p: Payment) -> bool:
+    st = (p.status or "").lower()
+    if st in {"failed", "expired", "canceled", "cancelled"}:
+        return True
+    if p.expires_at and p.expires_at < datetime.utcnow():
+        return True
+    return False
 
 
 @bp_purchase.get("/buy/<event_slug>")
@@ -67,9 +79,13 @@ def buy_post(event_slug: str):
         flash("CPF é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # ✅ convidados: aceita linhas OU separados por vírgula/;
-    guests_raw = (request.form.get("guests_text") or "").strip()
+    # ✅ trava allowlist
+    if not _cpf_allowed(cpf_digits):
+        flash("Este CPF ainda não está liberado para compra.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
 
+    # ✅ convidados: linhas OU vírgula/;
+    guests_raw = (request.form.get("guests_text") or "").strip()
     tmp = []
     for line in guests_raw.splitlines():
         line = line.strip()
@@ -81,10 +97,13 @@ def buy_post(event_slug: str):
     guests_lines = tmp
     guests_text = "\n".join(guests_lines)
 
-    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # 1,00
-    total_people = 1 + len(guests_lines)  # ✅ inclui comprador sempre
+    # ✅ total por pessoa (comprador + convidados)
+    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # R$ 1,00
+    total_people = 1 + len(guests_lines)
     total_cents = price_cents_unit * total_people
-    total_brl_str = _brl_from_cents(total_cents)
+
+    exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
+    expires_at_local = datetime.utcnow() + timedelta(minutes=exp_min)
 
     purchase_token = secrets.token_urlsafe(24)
 
@@ -93,7 +112,7 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # anti-duplicidade por CPF+show+evento
+        # Anti-duplicidade (CPF + show + evento)
         existing_purchase = s.scalar(
             select(Purchase)
             .where(
@@ -107,7 +126,7 @@ def buy_post(event_slug: str):
         if existing_purchase:
             existing_payment = s.scalar(
                 select(Payment)
-                .where(Payment.purchase_id == existing_purchase.id)
+                .where(Payment.purchase_id == existing_purchase.id, Payment.provider == "pagbank")
                 .order_by(Payment.id.desc())
             )
 
@@ -117,11 +136,12 @@ def buy_post(event_slug: str):
             ):
                 return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
 
-            # pendente -> reabre SOMENTE se convidados iguais
-            if existing_payment and _is_payment_open(existing_payment):
+            # pendente -> reaproveita se mesma lista e não expirou
+            if existing_payment and _is_open_payment(existing_payment) and not _is_expired_payment(existing_payment):
                 same_guests = (existing_purchase.guests_text or "").strip() == guests_text.strip()
-                if same_guests and getattr(existing_payment, "checkout_url", None):
-                    return redirect(existing_payment.checkout_url)
+                if same_guests:
+                    return redirect(url_for("purchase.pay_pix", payment_id=existing_payment.id))
+                # mudou convidados -> cria nova
 
         # cria nova compra
         purchase = Purchase(
@@ -140,85 +160,147 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        checkout_notification_url = f"{base_url}/webhooks/pagbank-checkout"
-        redirect_url = f"{base_url}/pay/return/{purchase.token}"
+        # webhook PIX Orders
+        pagbank_notification_url = f"{base_url}/webhooks/pagbank"
 
-        checkout_id, checkout_url = create_checkout_redirect(
-            reference=f"purchase-{purchase.id}",
-            item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_brl=total_brl_str,  # ✅ string segura
+        # cria order pix
+        order_id, qr_text, qr_b64, expires_at = create_pix_order(
+            reference_id=f"purchase-{purchase.id}",
             buyer_name=buyer_name,
             buyer_email=buyer_email,
-            buyer_phone=buyer_phone,
-            buyer_cpf=buyer_cpf,
-            redirect_url=redirect_url,
-            payment_notification_url=checkout_notification_url,
-            checkout_notification_url=None,
+            buyer_tax_id=cpf_digits,
+            buyer_phone_digits=buyer_phone,
+            item_name=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
+            amount_cents=total_cents,
+            notification_url=pagbank_notification_url,
+            expires_minutes=exp_min,
         )
 
         payment = Payment(
             purchase_id=purchase.id,
-            provider="pagbank_checkout",
+            provider="pagbank",
             amount_cents=total_cents,
             currency="BRL",
             status="pending",
-            external_id=checkout_id,
-            checkout_url=checkout_url,
+            external_id=order_id,
+            qr_text=qr_text,
+            qr_image_base64=qr_b64,
+            expires_at=(expires_at.replace(tzinfo=None) if expires_at else expires_at_local),
             paid_at=None,
         )
         s.add(payment)
         s.commit()
 
-        return redirect(checkout_url)
+        return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
+
+
+@bp_purchase.get("/pay/<int:payment_id>")
+def pay_pix(payment_id: int):
+    now = datetime.utcnow()
+
+    with db() as s:
+        p = s.get(Payment, payment_id)
+        if not p:
+            abort(404)
+
+        purchase = s.get(Purchase, p.purchase_id) if p.purchase_id else None
+        if not purchase:
+            abort(404)
+
+        ev = s.get(Event, purchase.event_id)
+
+        # já pago -> vai pros ingressos
+        if (purchase.status or "").lower() == "paid" or (p.status or "").lower() == "paid":
+            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+
+        # ✅ se expirou, marca failed (pra sua regra de duplicidade deixar criar nova)
+        if p.expires_at and p.status == "pending" and p.expires_at < now:
+            p.status = "failed"
+            purchase.status = "failed"
+            s.add(p)
+            s.add(purchase)
+            s.commit()
+            return redirect(url_for("purchase.pay_return", token=purchase.token))
+        price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # R$ 1,00 padrão
+
+    # convidados: usar a MESMA lógica do buy_post
+    guests_raw = (purchase.guests_text or "").strip()
+    tmp = []
+    for line in guests_raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
+        tmp.extend(parts)
+
+    total_people = 1 + len(tmp)
+
+
+    return render_template(
+        "pay_pix.html",
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+        payment=p,
+        purchase=purchase,
+        event=ev,
+        ticket_price_cents=price_cents_unit,
+        total_people=total_people,
+    )
+
+
+@bp_purchase.post("/pay/<int:payment_id>/refresh")
+def pay_refresh(payment_id: int):
+    return redirect(url_for("purchase.pay_pix", payment_id=payment_id))
 
 
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
     finalize_fn = current_app.extensions.get("finalize_purchase")
 
-    with db() as s:
-        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-        if not purchase:
-            abort(404)
+    def _load():
+        with db() as s:
+            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+            if not purchase:
+                abort(404)
 
-        payment_paid = s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-            .order_by(Payment.id.desc())
-        )
-
-        payment = payment_paid or s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id)
-            .order_by(Payment.id.desc())
-        )
-
-        tickets = list(
-            s.scalars(
-                select(Ticket)
-                .where(Ticket.purchase_id == purchase.id)
-                .order_by(Ticket.id.asc())
+            payment_paid = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+                .order_by(Payment.id.desc())
             )
-        )
+            payment = payment_paid or s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(Payment.id.desc())
+            )
 
-        should_finalize = (
-            payment
-            and (payment.status or "").lower() == "paid"
-            and not (payment.tickets_pdf_url or payment.tickets_zip_url)
-            and callable(finalize_fn)
-        )
+            tickets = list(
+                s.scalars(
+                    select(Ticket)
+                    .where(Ticket.purchase_id == purchase.id)
+                    .order_by(Ticket.id.asc())
+                )
+            )
+        return purchase, payment, tickets
 
-    if should_finalize:
+    purchase, payment, tickets = _load()
+
+    # se pagou mas ainda não gerou links, tenta finalize
+    if (
+        payment
+        and (payment.status or "").lower() == "paid"
+        and not (getattr(payment, "tickets_pdf_url", None) or getattr(payment, "tickets_zip_url", None))
+        and callable(finalize_fn)
+    ):
         try:
             finalize_fn(purchase.id)
         except Exception:
             pass
+        purchase, payment, tickets = _load()
 
-    # ✅ se já pagou, manda direto pra página final
-    if purchase and (purchase.status or "").lower() == "paid":
+    # se pagou, vai pra página final
+    if (purchase.status or "").lower() == "paid":
         return redirect(url_for("tickets.purchase_public", token=purchase.token))
 
-    # senão, mostra o retorno/aguardando
     return render_template(
         "payment_return.html",
         purchase=purchase,
@@ -226,3 +308,4 @@ def pay_return(token: str):
         tickets=tickets,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+
