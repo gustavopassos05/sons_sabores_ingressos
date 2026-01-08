@@ -4,12 +4,11 @@ import secrets
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
-from sqlalchemy import select, and_
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
+from sqlalchemy import select
 
 from db import db
-from models import Event, Purchase, Payment
-
+from models import Event, Purchase, Payment, Ticket
 from app_services.payments.pagbank_checkout import create_checkout_redirect
 
 bp_purchase = Blueprint("purchase", __name__)
@@ -25,8 +24,23 @@ def _brl_from_cents(cents: int) -> str:
 
 
 def _is_payment_open(p: Payment) -> bool:
-    # Ajuste se você tiver outros status "abertos"
     return (p.status or "").lower() in {"pending", "pending_payment", "waiting_payment", "in_process"}
+
+
+@bp_purchase.get("/buy/<event_slug>")
+def buy(event_slug: str):
+    with db() as s:
+        ev = s.scalar(select(Event).where(Event.slug == event_slug))
+        if not ev:
+            abort(404)
+
+    return render_template(
+        "buy.html",
+        event=ev,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+        form={},
+    )
+
 
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
@@ -56,13 +70,11 @@ def buy_post(event_slug: str):
     # ✅ convidados: aceita linhas OU separados por vírgula/;
     guests_raw = (request.form.get("guests_text") or "").strip()
 
-    # quebra por linha primeiro
     tmp = []
     for line in guests_raw.splitlines():
         line = line.strip()
         if not line:
             continue
-        # se a pessoa colou "a, b; c"
         parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
         tmp.extend(parts)
 
@@ -81,6 +93,7 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
+        # anti-duplicidade por CPF+show+evento
         existing_purchase = s.scalar(
             select(Purchase)
             .where(
@@ -104,14 +117,11 @@ def buy_post(event_slug: str):
             ):
                 return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
 
-            # ✅ pendente -> reabrir SOMENTE se a lista de convidados for igual
-            # se mudou, cria nova compra (pra não reutilizar valor antigo)
+            # pendente -> reabre SOMENTE se convidados iguais
             if existing_payment and _is_payment_open(existing_payment):
                 same_guests = (existing_purchase.guests_text or "").strip() == guests_text.strip()
                 if same_guests and getattr(existing_payment, "checkout_url", None):
                     return redirect(existing_payment.checkout_url)
-
-                # se mudou convidados, deixa criar nova
 
         # cria nova compra
         purchase = Purchase(
@@ -136,7 +146,7 @@ def buy_post(event_slug: str):
         checkout_id, checkout_url = create_checkout_redirect(
             reference=f"purchase-{purchase.id}",
             item_description=f"Sons & Sabores - {show_name} ({total_people} ingresso(s))",
-            amount_brl=total_brl_str,
+            amount_brl=total_brl_str,  # ✅ string segura
             buyer_name=buyer_name,
             buyer_email=buyer_email,
             buyer_phone=buyer_phone,
@@ -160,3 +170,59 @@ def buy_post(event_slug: str):
         s.commit()
 
         return redirect(checkout_url)
+
+
+@bp_purchase.get("/pay/return/<token>")
+def pay_return(token: str):
+    finalize_fn = current_app.extensions.get("finalize_purchase")
+
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+
+        payment_paid = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+            .order_by(Payment.id.desc())
+        )
+
+        payment = payment_paid or s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(Payment.id.desc())
+        )
+
+        tickets = list(
+            s.scalars(
+                select(Ticket)
+                .where(Ticket.purchase_id == purchase.id)
+                .order_by(Ticket.id.asc())
+            )
+        )
+
+        should_finalize = (
+            payment
+            and (payment.status or "").lower() == "paid"
+            and not (payment.tickets_pdf_url or payment.tickets_zip_url)
+            and callable(finalize_fn)
+        )
+
+    if should_finalize:
+        try:
+            finalize_fn(purchase.id)
+        except Exception:
+            pass
+
+    # ✅ se já pagou, manda direto pra página final
+    if purchase and (purchase.status or "").lower() == "paid":
+        return redirect(url_for("tickets.purchase_public", token=purchase.token))
+
+    # senão, mostra o retorno/aguardando
+    return render_template(
+        "payment_return.html",
+        purchase=purchase,
+        payment=payment,
+        tickets=tickets,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )
