@@ -1,3 +1,4 @@
+# payments/qr.py
 import qrcode
 from PIL import Image
 

@@ -13,6 +13,7 @@ from routes.ftp import bp_ftp
 from routes.webhooks import bp_webhooks
 from routes.admin import bp_admin
 from app_services.finalize_purchase import finalize_purchase_factory
+from routes.admin_tickets import bp_admin_tickets
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
 
@@ -56,6 +57,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp_ftp)
     app.register_blueprint(bp_webhooks)
     app.register_blueprint(bp_admin)
+    app.register_blueprint(bp_admin_tickets)
+
 
     # ✅ pluga o finalizador (webhook usa isso)
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
