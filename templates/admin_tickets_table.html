@@ -17,98 +17,122 @@
     </form>
   </div>
 
-  <div class="rounded-xl border bg-white">
-  <div class="w-full overflow-x-auto">
-    <table class="min-w-[1100px] w-full text-sm">
-      <thead class="bg-zinc-50 text-zinc-600">
-        <tr>
-          <th class="text-left p-3">Show</th>
-          <th class="text-left p-3">Compra</th>
-          <th class="text-left p-3">Pessoa</th>
-          <th class="text-left p-3">Pagamento</th>
-          <th class="text-left p-3">Links</th>
-          <th class="text-left p-3">Ações</th>
-        </tr>
-      </thead>
+  <!-- ✅ Sem barra de rolagem: cards no mobile, tabela no desktop -->
+  <div class="rounded-xl border bg-white divide-y">
 
-      <tbody class="divide-y">
-        {% for row in rows %}
-          {% set t = row.ticket %}
-          {% set p = row.purchase %}
-          {% set pay = row.payment %}
+    <!-- Cabeçalho (apenas desktop) -->
+    <div class="hidden md:grid grid-cols-6 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
+      <div>Show</div>
+      <div>Compra</div>
+      <div>Pessoa</div>
+      <div>Pagamento</div>
+      <div>Links</div>
+      <div>Ações</div>
+    </div>
 
-          {% set buyer = (p.buyer_name if p else t.buyer_name) %}
-          {% set cpf = (p.buyer_cpf if p else '') %}
-          {% set purchase_token = (p.token if p else '') %}
-          {% set pay_status = (pay.status if pay else 'n/d') %}
-          {% set pay_provider = (pay.provider if pay else '') %}
+    {% for row in rows %}
+      {% set t = row.ticket %}
+      {% set p = row.purchase %}
+      {% set pay = row.payment %}
 
-          <tr class="align-top">
-            <td class="p-3 whitespace-nowrap">{{ t.show_name }}</td>
+      {% set buyer = (p.buyer_name if p else t.buyer_name) %}
+      {% set cpf = (p.buyer_cpf if p else '') %}
+      {% set purchase_token = (p.token if p else '') %}
+      {% set pay_status = (pay.status if pay else 'n/d') %}
+      {% set pay_provider = (pay.provider if pay else '') %}
 
-            <td class="p-3 whitespace-nowrap">
-              <div class="font-medium">{{ buyer }}</div>
-              {% if cpf %}<div class="text-xs text-zinc-500">CPF: {{ cpf }}</div>{% endif %}
-              {% if purchase_token %}<div class="text-xs text-zinc-500 break-all">Token: {{ purchase_token }}</div>{% endif %}
-            </td>
+      <div class="p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-sm">
 
-            <td class="p-3 whitespace-nowrap">
-              <div class="font-semibold">{{ t.person_name }}</div>
-              <div class="text-xs text-zinc-500">
-                {{ 'Comprador' if t.person_type=='buyer' else 'Acompanhante' }}
-              </div>
-            </td>
+        <!-- Show -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Show</div>
+          <div class="font-medium">{{ t.show_name }}</div>
+        </div>
 
-            <td class="p-3 whitespace-nowrap">
-              <div class="font-semibold">{{ pay_status }}</div>
-              {% if pay_provider %}<div class="text-xs text-zinc-500">{{ pay_provider }}</div>{% endif %}
-            </td>
+        <!-- Compra -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Compra</div>
+          <div class="font-medium">{{ buyer }}</div>
+          {% if cpf %}<div class="text-xs text-zinc-500">CPF: {{ cpf }}</div>{% endif %}
+          {% if purchase_token %}<div class="text-xs text-zinc-400 break-all">Token: {{ purchase_token }}</div>{% endif %}
+        </div>
 
-            <td class="p-3">
-              <div class="flex flex-col gap-1">
-                {% if t.pdf_path %}
-                  <a href="{{ t.pdf_path }}" target="_blank" class="underline text-xs break-all">PDF</a>
-                {% else %}
-                  <span class="text-xs text-zinc-400">PDF —</span>
-                {% endif %}
-                {% if t.png_path %}
-                  <a href="{{ t.png_path }}" target="_blank" class="underline text-xs break-all">PNG</a>
-                {% else %}
-                  <span class="text-xs text-zinc-400">PNG —</span>
-                {% endif %}
-              </div>
-            </td>
+        <!-- Pessoa -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoa</div>
+          <div class="font-semibold">{{ t.person_name }}</div>
+          <div class="text-xs text-zinc-500">
+            {{ 'Comprador' if t.person_type=='buyer' else 'Acompanhante' }}
+          </div>
+        </div>
 
-            <td class="p-3">
-              <div class="flex flex-col gap-2">
+        <!-- Pagamento -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Pagamento</div>
+          <div class="flex items-center gap-2">
+            {% if pay_status|lower == 'paid' %}
+              <span class="inline-block rounded-full bg-green-100 text-green-800 text-xs px-2 py-1">Pago</span>
+            {% elif pay_status|lower == 'n/d' %}
+              <span class="inline-block rounded-full bg-zinc-100 text-zinc-700 text-xs px-2 py-1">n/d</span>
+            {% else %}
+              <span class="inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-1">{{ pay_status }}</span>
+            {% endif %}
+          </div>
+          {% if pay_provider %}<div class="text-xs text-zinc-500 mt-1">{{ pay_provider }}</div>{% endif %}
+        </div>
 
-                {% if purchase_token and pay_status|lower != 'paid' %}
-                  <button class="rounded-xl bg-black text-white px-3 py-2 text-xs"
-                          onclick="confirmPaid('{{ purchase_token }}')">
-                    Confirmar pagamento
-                  </button>
-                {% endif %}
+        <!-- Links -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Links</div>
+          <div class="flex flex-col gap-1">
+            {% if t.pdf_path %}
+              <a href="{{ t.pdf_path }}" target="_blank" class="underline text-xs break-all">PDF</a>
+            {% else %}
+              <span class="text-xs text-zinc-400">PDF —</span>
+            {% endif %}
+            {% if t.png_path %}
+              <a href="{{ t.png_path }}" target="_blank" class="underline text-xs break-all">PNG</a>
+            {% else %}
+              <span class="text-xs text-zinc-400">PNG —</span>
+            {% endif %}
+          </div>
+        </div>
 
-                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                        onclick="copyText('{{ t.pdf_path or t.png_path or '' }}')">
-                  Copiar link
-                </button>
+        <!-- Ações -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Ações</div>
+          <div class="flex flex-col gap-2">
 
-                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                        onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
-                  WhatsApp
-                </button>
+            {% if purchase_token and pay_status|lower != 'paid' %}
+              <button type="button"
+                      class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                      onclick="confirmPaid('{{ purchase_token }}')">
+                Confirmar pagamento
+              </button>
+            {% endif %}
 
-              </div>
-            </td>
-          </tr>
-        {% endfor %}
+            <button type="button"
+                    class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
+                    onclick="copyText('{{ t.pdf_path or t.png_path or '' }}')">
+              Copiar link
+            </button>
 
-        {% if rows|length == 0 %}
-          <tr><td colspan="6" class="p-5 text-center text-zinc-500">Nenhum registro encontrado.</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
+            <button type="button"
+                    class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
+                    onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
+              WhatsApp
+            </button>
+
+          </div>
+        </div>
+
+      </div>
+    {% endfor %}
+
+    {% if rows|length == 0 %}
+      <div class="p-6 text-center text-zinc-500">Nenhum registro encontrado.</div>
+    {% endif %}
+
   </div>
 
 </div>
