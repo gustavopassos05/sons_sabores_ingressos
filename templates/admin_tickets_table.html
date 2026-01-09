@@ -5,12 +5,12 @@
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
       <h2 class="text-2xl font-semibold">Admin · Ingressos</h2>
-      <p class="text-sm text-zinc-500">Tabela restrita para baixar e enviar ingressos (WhatsApp/E-mail).</p>
+      <p class="text-sm text-zinc-500">Tabela restrita para confirmar pagamento e enviar ingressos.</p>
     </div>
 
     <form method="get" class="flex gap-2">
       <input type="text" name="q" value="{{ q }}"
-             placeholder="Buscar por comprador, CPF, show, pessoa…"
+             placeholder="Buscar por comprador, CPF, show, pessoa, token…"
              class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
       {% if admin_key %}<input type="hidden" name="key" value="{{ admin_key }}"/>{% endif %}
       <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
@@ -22,13 +22,14 @@
       <thead class="bg-zinc-50 text-zinc-600">
         <tr>
           <th class="text-left p-3">Show</th>
-          <th class="text-left p-3">Comprador</th>
+          <th class="text-left p-3">Compra</th>
           <th class="text-left p-3">Pessoa</th>
           <th class="text-left p-3">Pagamento</th>
           <th class="text-left p-3">Links</th>
-          <th class="text-left p-3">Enviar</th>
+          <th class="text-left p-3">Ações</th>
         </tr>
       </thead>
+
       <tbody class="divide-y">
         {% for row in rows %}
           {% set t = row.ticket %}
@@ -36,32 +37,30 @@
           {% set pay = row.payment %}
 
           {% set buyer = (p.buyer_name if p else t.buyer_name) %}
+          {% set cpf = (p.buyer_cpf if p else '') %}
+          {% set purchase_token = (p.token if p else '') %}
           {% set pay_status = (pay.status if pay else 'n/d') %}
-          {% set provider = (pay.provider if pay else '') %}
+          {% set pay_provider = (pay.provider if pay else '') %}
 
           <tr class="align-top">
             <td class="p-3 whitespace-nowrap">{{ t.show_name }}</td>
 
             <td class="p-3 whitespace-nowrap">
               <div class="font-medium">{{ buyer }}</div>
-              {% if p and p.buyer_cpf %}
-                <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf }}</div>
-              {% endif %}
-              {% if p %}
-                <div class="text-xs text-zinc-500">Compra: {{ p.token }}</div>
-              {% endif %}
+              {% if cpf %}<div class="text-xs text-zinc-500">CPF: {{ cpf }}</div>{% endif %}
+              {% if purchase_token %}<div class="text-xs text-zinc-500 break-all">Token: {{ purchase_token }}</div>{% endif %}
             </td>
 
             <td class="p-3 whitespace-nowrap">
               <div class="font-semibold">{{ t.person_name }}</div>
-              <div class="text-xs text-zinc-500">{{ 'Comprador' if t.person_type=='buyer' else 'Acompanhante' }}</div>
+              <div class="text-xs text-zinc-500">
+                {{ 'Comprador' if t.person_type=='buyer' else 'Acompanhante' }}
+              </div>
             </td>
 
             <td class="p-3 whitespace-nowrap">
               <div class="font-semibold">{{ pay_status }}</div>
-              {% if provider %}
-                <div class="text-xs text-zinc-500">{{ provider }}</div>
-              {% endif %}
+              {% if pay_provider %}<div class="text-xs text-zinc-500">{{ pay_provider }}</div>{% endif %}
             </td>
 
             <td class="p-3">
@@ -71,7 +70,6 @@
                 {% else %}
                   <span class="text-xs text-zinc-400">PDF —</span>
                 {% endif %}
-
                 {% if t.png_path %}
                   <a href="{{ t.png_path }}" target="_blank" class="underline text-xs break-all">PNG</a>
                 {% else %}
@@ -83,31 +81,28 @@
             <td class="p-3">
               <div class="flex flex-col gap-2">
 
-                <!-- WhatsApp -->
-                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
-                        onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
-                  WhatsApp
-                </button>
+                {% if purchase_token and pay_status|lower != 'paid' %}
+                  <button class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                          onclick="confirmPaid('{{ purchase_token }}')">
+                    Confirmar pagamento
+                  </button>
+                {% endif %}
 
-                <!-- Copiar link -->
                 <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
                         onclick="copyText('{{ t.pdf_path or t.png_path or '' }}')">
                   Copiar link
                 </button>
 
-                <!-- Email -->
-                <form class="flex gap-2" onsubmit="return sendEmail(event, {{ t.id }});">
-                  <input name="to_email" type="email" required placeholder="email@..."
-                         class="w-44 rounded-xl border px-3 py-2 text-xs"/>
-                  <button class="rounded-xl bg-black text-white px-3 py-2 text-xs">
-                    Enviar e-mail
-                  </button>
-                </form>
+                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50"
+                        onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
+                  WhatsApp
+                </button>
 
               </div>
             </td>
           </tr>
         {% endfor %}
+
         {% if rows|length == 0 %}
           <tr><td colspan="6" class="p-5 text-center text-zinc-500">Nenhum registro encontrado.</td></tr>
         {% endif %}
@@ -118,6 +113,8 @@
 </div>
 
 <script>
+  const ADMIN_KEY = "{{ admin_key }}";
+
   function copyText(txt) {
     if (!txt) { alert("Sem link ainda."); return; }
     navigator.clipboard.writeText(txt);
@@ -136,25 +133,18 @@
     window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
   }
 
-  async function sendEmail(ev, ticketId) {
-    ev.preventDefault();
-    const form = ev.target;
-    const data = new FormData(form);
+  async function confirmPaid(purchaseToken) {
+    if (!confirm("Confirmar pagamento e gerar ingressos?")) return;
 
-    // mantém q e key na URL se existirem (pra não perder a busca)
-    const url = new URL(window.location.origin + "/admin/tickets/send-email/" + ticketId);
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("q")) url.searchParams.set("q", params.get("q"));
-    if (params.get("key")) url.searchParams.set("key", params.get("key"));
+    const url = "/admin/mark-paid/" + purchaseToken + "?key=" + encodeURIComponent(ADMIN_KEY);
+    const res = await fetch(url, { method: "POST" });
 
-    const res = await fetch(url.toString(), { method: "POST", body: data });
-    if (res.status === 204) {
-      alert("E-mail enviado ✅");
-      form.reset();
+    if (res.ok) {
+      alert("Pagamento confirmado ✅ Ingressos gerados/FTP em andamento.");
+      window.location.reload();
     } else {
-      alert("Falha ao enviar e-mail (ver logs).");
+      alert("Erro ao confirmar pagamento. Veja logs.");
     }
-    return false;
   }
 </script>
 {% endblock %}
