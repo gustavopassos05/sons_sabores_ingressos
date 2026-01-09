@@ -1,7 +1,6 @@
 # app_services/finalize_purchase.py
 import os
 import secrets
-import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -25,21 +24,11 @@ def _names_from_purchase(p: Purchase) -> List[str]:
     return names
 
 
-def _make_pdf_from_pngs(png_paths: List[Path], pdf_path: Path) -> None:
+def _make_single_pdf_from_png(png_path: Path, pdf_path: Path) -> None:
     from PIL import Image
-    if not png_paths:
-        raise RuntimeError("Nenhum PNG para gerar PDF.")
-    imgs = [Image.open(p).convert("RGB") for p in png_paths]
-    first, rest = imgs[0], imgs[1:]
+    img = Image.open(png_path).convert("RGB")
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    first.save(pdf_path, save_all=True, append_images=rest)
-
-
-def _make_zip(files: List[Path], zip_path: Path) -> None:
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in files:
-            z.write(f, arcname=f.name)
+    img.save(pdf_path)
 
 
 def finalize_purchase_factory() -> Callable[[int], None]:
@@ -52,7 +41,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
 
         public_base = (os.getenv("FTP_PUBLIC_BASE") or "").rstrip("/")
         if not public_base:
-            raise RuntimeError("FTP_PUBLIC_BASE não configurado (URL pública dos arquivos no HostGator).")
+            raise RuntimeError("FTP_PUBLIC_BASE não configurado.")
 
         base_url = (current_app.config.get("BASE_URL") or "").rstrip("/")
         if not base_url:
@@ -63,7 +52,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if not purchase:
                 return
 
-            # ✅ PEGA O PAYMENT PAGO PRIMEIRO
+            # ✅ pegue o payment PAID primeiro (evita pegar pending mais recente)
             payment_paid: Optional[Payment] = s.scalar(
                 select(Payment)
                 .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
@@ -77,12 +66,16 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if not payment:
                 return
 
-            # só roda se realmente pago
             if (purchase.status or "").lower() != "paid" or (payment.status or "").lower() != "paid":
                 return
 
-            # idempotência
-            if getattr(payment, "tickets_pdf_url", None):
+            # ✅ se já tem tickets com URL, não refaz (idempotência)
+            already = s.scalar(
+                select(Ticket)
+                .where(Ticket.purchase_id == purchase.id, Ticket.png_path.isnot(None))
+                .order_by(Ticket.id.asc())
+            )
+            if already:
                 return
 
             ev: Optional[Event] = s.get(Event, purchase.event_id)
@@ -91,14 +84,13 @@ def finalize_purchase_factory() -> Callable[[int], None]:
 
             names = _names_from_purchase(purchase) or ["Convidado"]
 
+            # pasta local
             local_dir = (storage_dir / "tickets" / purchase.token).resolve()
             local_dir.mkdir(parents=True, exist_ok=True)
 
+            # QR aponta para a página pública da compra
             qr_target_url = f"{base_url}/purchase/{purchase.token}"
             qr_img = make_qr_image(qr_target_url, size_px=360)
-
-            png_paths: List[Path] = []
-            created_tickets: List[Ticket] = []
 
             for idx, person_name in enumerate(names, start=1):
                 t = Ticket(
@@ -115,8 +107,9 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                     issued_at=datetime.utcnow(),
                 )
                 s.add(t)
-                s.flush()
+                s.flush()  # garante t.id
 
+                # gera PNG
                 png_path = generate_single_ticket_png(
                     storage_dir=local_dir,
                     event_slug=event_slug,
@@ -129,35 +122,27 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 )
                 paste_qr_on_png(png_path, qr_img, margin=40)
 
-                png_paths.append(png_path)
-                t.png_path = str(png_path)
-                created_tickets.append(t)
+                # gera PDF 1 página (por pessoa)
+                pdf_path = (png_path.parent / (png_path.stem + ".pdf")).resolve()
+                _make_single_pdf_from_png(png_path, pdf_path)
 
-            pdf_path = (local_dir / "ingressos.pdf").resolve()
-            _make_pdf_from_pngs(png_paths, pdf_path)
+                # nomes remotos (sem pastas — mais seguro no HostGator)
+                png_remote = f"{purchase.token}-ticket-{t.id}.png"
+                pdf_remote = f"{purchase.token}-ticket-{t.id}.pdf"
 
-            for t in created_tickets:
-                t.pdf_path = str(pdf_path)
+                ok_png, info_png = upload_file(png_path, png_remote)
+                if not ok_png:
+                    raise RuntimeError(str(info_png))
 
-            zip_path = (local_dir / "ingressos.zip").resolve()
-            _make_zip([pdf_path] + png_paths, zip_path)
+                ok_pdf, info_pdf = upload_file(pdf_path, pdf_remote)
+                if not ok_pdf:
+                    raise RuntimeError(str(info_pdf))
 
-            pdf_remote = f"{purchase.token}-ingressos.pdf"
-            zip_remote = f"{purchase.token}-ingressos.zip"
+                # ✅ salva URL pública no banco (links individuais)
+                t.png_path = f"{public_base}/{png_remote}"
+                t.pdf_path = f"{public_base}/{pdf_remote}"
 
-            ok_pdf, info_pdf = upload_file(pdf_path, pdf_remote)
-            if not ok_pdf:
-                raise RuntimeError(str(info_pdf))
-
-            ok_zip, info_zip = upload_file(zip_path, zip_remote)
-            if not ok_zip:
-                raise RuntimeError(str(info_zip))
-
-            payment.tickets_pdf_url = f"{public_base}/{pdf_remote}"
-            payment.tickets_zip_url = f"{public_base}/{zip_remote}"
-            payment.tickets_generated_at = datetime.utcnow()
-
-            print("[FINALIZE] purchase", purchase.id, "PDF", payment.tickets_pdf_url, "ZIP", payment.tickets_zip_url)
+                s.add(t)
 
             s.commit()
 

@@ -1,162 +1,20 @@
-{% extends "base.html" %}
-{% block content %}
-
-<div class="max-w-2xl mx-auto bg-white rounded-2xl shadow p-5">
-
-  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
-  <p class="text-sm text-zinc-500 mb-4">{{ purchase.show_name }}</p>
-
-  {# =======================
-     STATUS / DOWNLOADS
-     ======================= #}
-  {% if payment and payment.status == "paid" %}
-    {% if payment.tickets_pdf_url or payment.tickets_zip_url %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-col gap-2 items-center text-center">
-        <p class="text-green-700 font-medium">Ingressos liberados ✅</p>
-
-        {% if payment.tickets_pdf_url %}
-          <a href="{{ payment.tickets_pdf_url }}" target="_blank"
-             class="inline-block rounded-xl bg-black text-white px-6 py-3">
-            Baixar ingressos (PDF)
-          </a>
-        {% endif %}
-
-        {% if payment.tickets_zip_url %}
-          <a href="{{ payment.tickets_zip_url }}" target="_blank"
-             class="inline-block rounded-xl border px-6 py-3">
-            Baixar (ZIP)
-          </a>
-        {% endif %}
-      </div>
-    {% else %}
-      <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-        <p class="text-zinc-600">Pagamento confirmado ✅</p>
-        <p class="text-sm text-zinc-500 mt-1">Estamos gerando seus arquivos para download…</p>
-        <script>
-          setTimeout(() => window.location.reload(), 3000);
-        </script>
-      </div>
-    {% endif %}
-  {% else %}
-    <div class="bg-white rounded-2xl shadow p-4 mb-4 text-center">
-      <p class="text-zinc-700 font-medium">Pagamento em processamento</p>
-      <p class="text-sm text-zinc-500 mt-1">Assim que confirmar, os ingressos serão liberados automaticamente.</p>
-      <script>
-        setTimeout(() => window.location.reload(), 4000);
-      </script>
-    </div>
+<div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+  {% if ticket.png_path %}
+    <a href="{{ ticket.png_path }}" target="_blank"
+       class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 text-center">
+      Baixar PNG
+    </a>
   {% endif %}
 
-  {# =======================
-     RESUMO
-     ======================= #}
-  <div class="mb-4 text-sm text-zinc-700 space-y-1">
-    <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
-    <div><span class="font-semibold">Ingressos:</span> {{ tickets|length }}</div>
-  </div>
+  {% if ticket.pdf_path %}
+    <a href="{{ ticket.pdf_path }}" target="_blank"
+       class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 text-center">
+      Baixar PDF
+    </a>
+  {% endif %}
 
-  {# Link único da compra #}
-  {% set purchase_url = url_for('tickets.purchase_public', token=purchase.token, _external=True) %}
-
-  {# =======================
-     AÇÕES
-     ======================= #}
-  <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-    <button
-      onclick="enviarWhatsApp()"
-      class="rounded-xl bg-black text-white py-3 text-sm font-medium"
-    >
-      Enviar no WhatsApp
-    </button>
-
-    <button
-      onclick="copiarLinks()"
-      class="rounded-xl border py-3 text-sm hover:bg-zinc-50"
-    >
-      Copiar links (compra + downloads)
-    </button>
-  </div>
-
-  <div class="rounded-xl border p-4 text-sm">
-    <div class="font-semibold mb-1">Link da compra</div>
-    <div class="text-xs text-zinc-500 break-all mb-3">{{ purchase_url }}</div>
-
-    {% if payment and payment.status == "paid" and (payment.tickets_pdf_url or payment.tickets_zip_url) %}
-      <div class="font-semibold mb-1">Downloads</div>
-      <ul class="list-disc pl-5 text-zinc-700 space-y-1">
-        {% if payment.tickets_pdf_url %}
-          <li class="break-all">PDF: {{ payment.tickets_pdf_url }}</li>
-        {% endif %}
-        {% if payment.tickets_zip_url %}
-          <li class="break-all">ZIP: {{ payment.tickets_zip_url }}</li>
-        {% endif %}
-      </ul>
-    {% endif %}
-  </div>
-
-  {# =======================
-     LISTA DE NOMES (sem links individuais)
-     ======================= #}
-  <div class="mt-4 divide-y rounded-xl border">
-    {% for ticket in tickets %}
-      <div class="p-4 flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="font-semibold truncate">
-            {{ ticket.person_name }}
-            {% if ticket.person_type == 'buyer' %}
-              <span class="text-xs text-zinc-500">(Comprador)</span>
-            {% endif %}
-          </div>
-          <div class="text-xs text-zinc-500">
-            Acesso pelo link da compra acima
-          </div>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-
+  <button onclick="navigator.clipboard.writeText('{{ ticket.pdf_path or ticket.png_path }}')"
+          class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50">
+    Copiar link
+  </button>
 </div>
-
-<script>
-  function enviarWhatsApp() {
-    const purchaseUrl = "{{ purchase_url }}";
-
-    let text =
-      "Ingressos — Sons & Sabores ✅\n\n" +
-      "Show: {{ purchase.show_name }}\n" +
-      "Comprador: {{ purchase.buyer_name }}\n" +
-      "Qtd: {{ tickets|length }}\n\n" +
-      "Link da compra:\n" + purchaseUrl + "\n\n";
-
-    {% if payment and payment.status == "paid" and payment.tickets_pdf_url %}
-      text += "PDF:\n{{ payment.tickets_pdf_url }}\n\n";
-    {% endif %}
-    {% if payment and payment.status == "paid" and payment.tickets_zip_url %}
-      text += "ZIP:\n{{ payment.tickets_zip_url }}\n\n";
-    {% endif %}
-
-    const url = "https://wa.me/?text=" + encodeURIComponent(text);
-    window.open(url, "_blank");
-  }
-
-  function copiarLinks() {
-    const purchaseUrl = "{{ purchase_url }}";
-    let texto = "Ingressos — Sons & Sabores ✅\n\n";
-    texto += "Show: {{ purchase.show_name }}\n";
-    texto += "Comprador: {{ purchase.buyer_name }}\n";
-    texto += "Qtd: {{ tickets|length }}\n\n";
-    texto += "Link da compra:\n" + purchaseUrl + "\n\n";
-
-    {% if payment and payment.status == "paid" and payment.tickets_pdf_url %}
-      texto += "PDF:\n{{ payment.tickets_pdf_url }}\n\n";
-    {% endif %}
-    {% if payment and payment.status == "paid" and payment.tickets_zip_url %}
-      texto += "ZIP:\n{{ payment.tickets_zip_url }}\n\n";
-    {% endif %}
-
-    navigator.clipboard.writeText(texto);
-    alert("Links copiados ✅");
-  }
-</script>
-
-{% endblock %}
