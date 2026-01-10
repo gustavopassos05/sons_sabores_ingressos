@@ -1,10 +1,6 @@
 # routes/admin_panel.py
-from flask import Blueprint, render_template
-from sqlalchemy import select, func, desc
-
-from db import db
-from models import Payment, Purchase, AdminSetting
-from routes.admin_auth import admin_required
+import os
+from flask import Blueprint, request, abort, render_template, redirect, url_for
 
 bp_admin_panel = Blueprint("admin_panel", __name__)
 
@@ -15,12 +11,6 @@ def _check_admin():
     got = (request.headers.get("X-ADMIN-KEY") or request.args.get("key") or "").strip()
     if got != key:
         abort(401)
-
-@bp_admin_panel.get("/admin")
-def admin_home():
-    _check_admin()
-    key = (request.args.get("key") or "").strip()
-    return render_template("admin_home.html", admin_key=key, app_name=os.getenv("APP_NAME", "Sons & Sabores"))
 
 def _get_setting(s, key: str, default: str = "") -> str:
     row = s.scalar(select(AdminSetting).where(AdminSetting.key == key))

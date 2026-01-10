@@ -68,8 +68,6 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_settings)
 
 
-
-
     # ✅ pluga o finalizador (webhook usa isso)
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
 
