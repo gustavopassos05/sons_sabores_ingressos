@@ -104,3 +104,10 @@ class Payment(Base):
     tickets_zip_url: Mapped[str] = mapped_column(String(500), nullable=True)
     tickets_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
+class AdminSetting(Base):
+    __tablename__ = "admin_settings"
+    __table_args__ = (UniqueConstraint("key", name="uq_admin_settings_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=True)

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+  <div class="bg-white rounded-2xl shadow p-4 mb-4">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <div class="text-xs text-zinc-500">Painel administrativo</div>
+        <div class="text-2xl font-semibold">Sons & Sabores</div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 items-center">
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="{{ url_for('admin_panel.admin_home') }}">
+          Dashboard
+        </a>
+
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="/admin/pending">
+          Pendências
+          {% if admin_pending_count and admin_pending_count > 0 %}
+            <span class="ml-2 inline-block text-xs bg-black text-white rounded-full px-2 py-0.5">
+              {{ admin_pending_count }}
+            </span>
+          {% endif %}
+        </a>
+
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="/admin/tickets">
+          Ingressos
+        </a>
+
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="{{ url_for('admin_settings.settings_get') }}">
+          Configurações
+        </a>
+
+        <form method="post" action="{{ url_for('admin_auth.admin_logout') }}">
+          <button class="rounded-xl bg-black text-white px-4 py-2 text-sm">
+            Sair
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% block admin_content %}{% endblock %}
+
+</div>
+{% endblock %}

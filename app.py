@@ -15,7 +15,9 @@ from routes.admin import bp_admin
 from app_services.finalize_purchase import finalize_purchase_factory
 from routes.admin_tickets import bp_admin_tickets
 from routes.admin_pending import bp_admin_pending
-
+from routes.admin_panel import bp_admin_panel
+from routes.admin_auth import bp_admin_auth
+from routes.admin_settings import bp_admin_settings
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
 
@@ -61,6 +63,10 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin)
     app.register_blueprint(bp_admin_tickets)
     app.register_blueprint(bp_admin_pending)
+    app.register_blueprint(bp_admin_panel)
+    app.register_blueprint(bp_admin_auth)
+    app.register_blueprint(bp_admin_settings)
+
 
 
 
