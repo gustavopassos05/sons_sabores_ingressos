@@ -376,3 +376,15 @@ def pay_manual(token: str):
         bank=bank,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+
+@bp_purchase.get("/pay/manual/thanks/<token>")
+def pay_manual_thanks(token: str):
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+    return render_template(
+        "pay_manual_thanks.html",
+        purchase=purchase,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto bg-white rounded-2xl shadow p-5">
+
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-2xl font-semibold">Admin · Pendências</h2>
+      <p class="text-sm text-zinc-500">Compras aguardando confirmação manual.</p>
+    </div>
+
+    <form method="get" class="flex gap-2">
+      <input type="text" name="q" value="{{ q }}"
+             placeholder="Buscar por nome, CPF, show, token…"
+             class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
+      {% if admin_key %}<input type="hidden" name="key" value="{{ admin_key }}"/>{% endif %}
+      <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
+    </form>
+  </div>
+
+  <div class="rounded-xl border divide-y">
+    {% for row in rows %}
+      {% set p = row.purchase %}
+      {% set pay = row.payment %}
+      <div class="p-4 grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
+
+        <div>
+          <div class="text-xs text-zinc-400">Show</div>
+          <div class="font-medium">{{ p.show_name }}</div>
+        </div>
+
+        <div>
+          <div class="text-xs text-zinc-400">Comprador</div>
+          <div class="font-medium">{{ p.buyer_name }}</div>
+          <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf }}</div>
+        </div>
+
+        <div>
+          <div class="text-xs text-zinc-400">Token</div>
+          <div class="text-xs break-all">{{ p.token }}</div>
+        </div>
+
+        <div>
+          <div class="text-xs text-zinc-400">Pagamento</div>
+          <div class="font-semibold">{{ pay.status }}</div>
+          <div class="text-xs text-zinc-500">{{ pay.provider }}</div>
+          <div class="text-xs text-zinc-500">Total: R$ {{ '%.2f'|format((pay.amount_cents or 0)/100) }}</div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
+             href="{{ url_for('purchase.pay_manual', token=p.token) }}">
+            Abrir página do Pix
+          </a>
+
+          <button class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                  onclick="confirmPaid('{{ p.token }}')">
+            Confirmar pagamento
+          </button>
+        </div>
+      </div>
+    {% endfor %}
+
+    {% if rows|length == 0 %}
+      <div class="p-6 text-center text-zinc-500">Nenhuma pendência encontrada.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  const ADMIN_KEY = "{{ admin_key }}";
+
+  async function confirmPaid(purchaseToken) {
+    if (!confirm("Confirmar pagamento e gerar ingressos?")) return;
+
+    const url = "/admin/mark-paid/" + purchaseToken + "?key=" + encodeURIComponent(ADMIN_KEY);
+    const res = await fetch(url, { method: "POST" });
+
+    if (res.ok) {
+      alert("Pagamento confirmado ✅ Ingressos gerados/FTP em andamento.");
+      window.location.reload();
+    } else {
+      alert("Erro ao confirmar pagamento. Veja logs.");
+    }
+  }
+</script>
+{% endblock %}
