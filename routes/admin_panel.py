@@ -1,18 +1,12 @@
 # routes/admin_panel.py
-import os
-from flask import Blueprint, request, abort, render_template, redirect, url_for
 from flask import Blueprint, render_template
+from sqlalchemy import select, func
+
+from db import db
+from models import Payment, AdminSetting
 from routes.admin_auth import admin_required
 
 bp_admin_panel = Blueprint("admin_panel", __name__)
-
-def _check_admin():
-    key = (os.getenv("ADMIN_KEY") or "").strip()
-    if not key:
-        raise RuntimeError("ADMIN_KEY não configurado no Render.")
-    got = (request.headers.get("X-ADMIN-KEY") or request.args.get("key") or "").strip()
-    if got != key:
-        abort(401)
 
 def _get_setting(s, key: str, default: str = "") -> str:
     row = s.scalar(select(AdminSetting).where(AdminSetting.key == key))
@@ -20,24 +14,33 @@ def _get_setting(s, key: str, default: str = "") -> str:
 
 @bp_admin_panel.app_context_processor
 def inject_admin_badges():
-    # injeta em todos templates do app, mas só mostra no admin_base
-    pending = 0
-    with db() as s:
-        # pendências = pagamentos manuais pendentes (ajuste se quiser incluir outros providers)
-        pending = s.scalar(
-            select(func.count())
-            .select_from(Payment)
-            .where(Payment.provider == "manual_pix", Payment.status != "paid")
-        ) or 0
+    """
+    Injeta contagem de pendências e configs básicas em templates.
+    ⚠️ Precisa ser leve e não quebrar páginas públicas.
+    """
+    try:
+        with db() as s:
+            pending = s.scalar(
+                select(func.count())
+                .select_from(Payment)
+                .where(Payment.provider == "manual_pix", Payment.status != "paid")
+            ) or 0
 
-        pix_key = _get_setting(s, "PIX_KEY", "")
-        whatsapp = _get_setting(s, "WHATSAPP_NUMBER", "")
+            pix_key = _get_setting(s, "PIX_KEY", "")
+            whatsapp = _get_setting(s, "WHATSAPP_NUMBER", "")
 
-    return {
-        "admin_pending_count": pending,
-        "cfg_pix_key": pix_key,
-        "cfg_whatsapp": whatsapp,
-    }
+        return {
+            "admin_pending_count": pending,
+            "cfg_pix_key": pix_key,
+            "cfg_whatsapp": whatsapp,
+        }
+    except Exception:
+        # não derruba o site público se der qualquer problema no admin/db
+        return {
+            "admin_pending_count": 0,
+            "cfg_pix_key": "",
+            "cfg_whatsapp": "",
+        }
 
 @bp_admin_panel.get("/admin", endpoint="home")
 @admin_required
