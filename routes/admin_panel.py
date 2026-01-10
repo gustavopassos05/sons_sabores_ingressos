@@ -1,6 +1,8 @@
 # routes/admin_panel.py
 import os
 from flask import Blueprint, request, abort, render_template, redirect, url_for
+from flask import Blueprint, render_template
+from routes.admin_auth import admin_required
 
 bp_admin_panel = Blueprint("admin_panel", __name__)
 
@@ -37,7 +39,7 @@ def inject_admin_badges():
         "cfg_whatsapp": whatsapp,
     }
 
-@bp_admin_panel.get("/admin")
+@bp_admin_panel.get("/admin", endpoint="home")
 @admin_required
 def admin_home():
     return render_template("admin_home.html")
