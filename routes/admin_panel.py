@@ -8,23 +8,28 @@ from routes.admin_auth import admin_required
 
 bp_admin_panel = Blueprint("admin_panel", __name__)
 
+
 def _get_setting(s, key: str, default: str = "") -> str:
     row = s.scalar(select(AdminSetting).where(AdminSetting.key == key))
     return (row.value if row and row.value is not None else default)
 
+
 @bp_admin_panel.app_context_processor
 def inject_admin_badges():
     """
-    Injeta contagem de pendências e configs básicas em templates.
-    ⚠️ Precisa ser leve e não quebrar páginas públicas.
+    Injeta contagem de pendências/configs.
+    ⚠️ Nunca pode derrubar as páginas públicas.
     """
     try:
         with db() as s:
-            pending = s.scalar(
-                select(func.count())
-                .select_from(Payment)
-                .where(Payment.provider == "manual_pix", Payment.status != "paid")
-            ) or 0
+            pending = (
+                s.scalar(
+                    select(func.count())
+                    .select_from(Payment)
+                    .where(Payment.provider == "manual_pix", Payment.status != "paid")
+                )
+                or 0
+            )
 
             pix_key = _get_setting(s, "PIX_KEY", "")
             whatsapp = _get_setting(s, "WHATSAPP_NUMBER", "")
@@ -35,12 +40,12 @@ def inject_admin_badges():
             "cfg_whatsapp": whatsapp,
         }
     except Exception:
-        # não derruba o site público se der qualquer problema no admin/db
         return {
             "admin_pending_count": 0,
             "cfg_pix_key": "",
             "cfg_whatsapp": "",
         }
+
 
 @bp_admin_panel.get("/admin", endpoint="home")
 @admin_required
