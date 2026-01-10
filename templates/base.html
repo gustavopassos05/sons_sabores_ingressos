@@ -17,22 +17,21 @@
       <!-- Menu direito -->
       <nav class="flex items-center gap-4 text-sm">
 
-        {% if session.get("admin_logged") %}
-          <a href="{{ url_for('admin_panel.home') }}"
-             class="font-medium hover:underline">
+        {% if session.get("is_admin") %}
+          <a href="{{ url_for('admin_panel.home') }}" class="font-medium hover:underline">
             Painel
           </a>
 
-          <a href="{{ url_for('admin_auth.logout') }}"
-             class="text-zinc-500 hover:underline">
-            Sair
-          </a>
+          <form method="post" action="{{ url_for('admin_auth.admin_logout') }}">
+            <button class="text-zinc-500 hover:underline" type="submit">Sair</button>
+          </form>
         {% else %}
-          <a href="{{ url_for('admin_auth.login') }}"
+          <a href="{{ url_for('admin_auth.admin_login') }}"
              class="text-zinc-500 hover:text-black hover:underline">
             Admin
           </a>
         {% endif %}
+
 
       </nav>
     </div>
