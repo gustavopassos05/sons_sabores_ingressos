@@ -16,16 +16,14 @@ from app_services.ticket_generator import (
     generate_single_ticket_png,
     make_qr_image,
     paste_qr_on_png,
+    slug_filename,
 )
 from app_services.ftp_uploader import upload_file
 
 
 def _names_from_purchase(p: Purchase) -> List[str]:
     """
-    Retorna lista com:
-      1) comprador
-      2) convidados (guests_text)
-    Aceita guests_text com linhas e também com ',' e ';' (tolerante).
+    Comprador + convidados (aceita guests_text com linhas e também ',' e ';').
     """
     names: List[str] = []
     if (p.buyer_name or "").strip():
@@ -49,7 +47,7 @@ def _names_from_purchase(p: Purchase) -> List[str]:
 
 def _make_single_pdf_from_png(png_path: Path, pdf_path: Path) -> None:
     """
-    PDF individual (uma página), baseado no PNG já com QR.
+    PDF individual (1 página) a partir do PNG (já com QR).
     """
     from PIL import Image
     img = Image.open(png_path).convert("RGB")
@@ -59,12 +57,11 @@ def _make_single_pdf_from_png(png_path: Path, pdf_path: Path) -> None:
 
 def _make_pdf_from_pngs(png_paths: List[Path], pdf_path: Path) -> None:
     """
-    PDF geral (várias páginas), baseado nos PNGs já com QR.
+    PDF geral (várias páginas) a partir dos PNGs (já com QR).
     """
     from PIL import Image
     if not png_paths:
         raise RuntimeError("Nenhum PNG para gerar PDF geral.")
-
     imgs = [Image.open(p).convert("RGB") for p in png_paths]
     first, rest = imgs[0], imgs[1:]
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,9 +78,11 @@ def _make_zip(files: List[Path], zip_path: Path) -> None:
 
 def finalize_purchase_factory() -> Callable[[int], None]:
     """
-    Chamado pelo webhook/admin quando o pagamento vira PAID.
-    Gera ingressos individuais (PNG/PDF) + FTP + links.
-    Também gera bundle (PDF geral + ZIP) e salva em Payment.tickets_pdf_url/zip_url.
+    Ao confirmar pagamento (webhook/admin):
+    - cria 1 Ticket por pessoa
+    - gera PNG/PDF individual com QR individual (/ticket/<ticket.token>)
+    - faz upload FTP e salva URL pública em Ticket.png_path / Ticket.pdf_path
+    - também gera bundle (PDF geral + ZIP) e salva em Payment.tickets_pdf_url / tickets_zip_url
     """
 
     def finalize(purchase_id: int) -> None:
@@ -124,9 +123,8 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if (purchase.status or "").lower() != "paid" or (payment.status or "").lower() != "paid":
                 return
 
-            # ✅ idempotência: se já tem bundle ou tickets já com links, não refaz
+            # ✅ idempotência: se já tem bundle, considera finalizado
             if getattr(payment, "tickets_pdf_url", None) or getattr(payment, "tickets_zip_url", None):
-                # ainda pode existir caso parcial, mas normalmente isso já significa finalizado
                 return
 
             # evento
@@ -145,10 +143,8 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             png_paths: List[Path] = []
             pdf_paths: List[Path] = []
 
-            created_tickets: List[Ticket] = []
-
+            # ✅ gera ingressos individuais
             for idx, person_name in enumerate(names, start=1):
-                # cria ticket
                 t = Ticket(
                     event_id=purchase.event_id,
                     purchase_id=purchase.id,
@@ -165,11 +161,11 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 s.add(t)
                 s.flush()  # garante t.id
 
-                # ✅ QR individual
+                # ✅ QR individual do ticket
                 qr_target_url = f"{base_url}/ticket/{t.token}"
                 qr_img = make_qr_image(qr_target_url, size_px=360)
 
-                # gera PNG base + textos
+                # gera PNG com show + nome
                 png_path = generate_single_ticket_png(
                     storage_dir=local_dir,
                     event_slug=event_slug,
@@ -184,16 +180,17 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 # cola QR no PNG
                 paste_qr_on_png(png_path, qr_img, margin=40)
 
-                # gera PDF individual (uma página) a partir do PNG com QR
+                # gera PDF individual (1 página) a partir do PNG (já com QR)
                 pdf_path = (png_path.parent / (png_path.stem + ".pdf")).resolve()
                 _make_single_pdf_from_png(png_path, pdf_path)
 
                 png_paths.append(png_path)
                 pdf_paths.append(pdf_path)
 
-                # faz FTP (nomes simples, sem subpastas)
-                png_remote = f"{purchase.token}-ticket-{t.id}.png"
-                pdf_remote = f"{purchase.token}-ticket-{t.id}.pdf"
+                # ✅ nome do arquivo baseado em nome+sobreNome (slug) + id para evitar colisão
+                safe_name = slug_filename(person_name)
+                png_remote = f"{safe_name}-{t.id}.png"
+                pdf_remote = f"{safe_name}-{t.id}.pdf"
 
                 ok_png, info_png = upload_file(png_path, png_remote)
                 if not ok_png:
@@ -203,17 +200,17 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 if not ok_pdf:
                     raise RuntimeError(str(info_pdf))
 
-                # ✅ salva links individuais no próprio Ticket
+                # salva URL pública no Ticket (links individuais)
                 t.png_path = f"{public_base}/{png_remote}"
                 t.pdf_path = f"{public_base}/{pdf_remote}"
 
-                created_tickets.append(t)
+                s.add(t)
 
-            # ✅ bundle: PDF geral + ZIP (ajuda muito na UX e encerra should_finalize)
-            pdf_all_path = (local_dir / "ingressos.pdf").resolve()
+            # ✅ bundle (PDF geral + ZIP)
+            pdf_all_path = (local_dir / f"{purchase.token}-ingressos.pdf").resolve()
             _make_pdf_from_pngs(png_paths, pdf_all_path)
 
-            zip_path = (local_dir / "ingressos.zip").resolve()
+            zip_path = (local_dir / f"{purchase.token}-ingressos.zip").resolve()
             _make_zip([pdf_all_path] + pdf_paths + png_paths, zip_path)
 
             pdf_all_remote = f"{purchase.token}-ingressos.pdf"
@@ -227,15 +224,15 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             if not ok_zip:
                 raise RuntimeError(str(info_zip))
 
-            # ✅ salva links do bundle no Payment (para should_finalize e botões gerais)
             payment.tickets_pdf_url = f"{public_base}/{pdf_all_remote}"
             payment.tickets_zip_url = f"{public_base}/{zip_remote}"
             payment.tickets_generated_at = datetime.utcnow()
 
+            s.add(payment)
             s.commit()
 
             print("[FINALIZE] purchase", purchase.id)
-            print("[FINALIZE] tickets:", len(created_tickets))
+            print("[FINALIZE] tickets:", len(names))
             print("[FINALIZE] bundle PDF:", payment.tickets_pdf_url)
             print("[FINALIZE] bundle ZIP:", payment.tickets_zip_url)
 
