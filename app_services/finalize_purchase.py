@@ -76,6 +76,14 @@ def _make_zip(files: List[Path], zip_path: Path) -> None:
                 z.write(f, arcname=Path(f).name)
 
 
+def _assert_no_slash(name: str, what: str) -> None:
+    # garante que não estamos mandando caminho no remote_filename
+    if not name:
+        raise RuntimeError(f"{what} vazio.")
+    if "/" in name or "\\" in name:
+        raise RuntimeError(f"{what} inválido (não pode conter pastas): {name}")
+
+
 def finalize_purchase_factory() -> Callable[[int], None]:
     """
     Ao confirmar pagamento (webhook/admin):
@@ -92,9 +100,11 @@ def finalize_purchase_factory() -> Callable[[int], None]:
         font_show_path = Path(os.getenv("TICKET_FONT_SHOW", "static/fonts/Kalam-Bold.ttf")).resolve()
         font_names_path = Path(os.getenv("TICKET_FONT_NAME", "static/fonts/Kalam-Bold.ttf")).resolve()
 
-        public_base = (os.getenv("FTP_PUBLIC_BASE") or "").rstrip("/")
+        public_base = (os.getenv("FTP_PUBLIC_BASE") or "").strip().rstrip("/")
         if not public_base:
-            raise RuntimeError("FTP_PUBLIC_BASE não configurado (URL pública dos arquivos no HostGator).")
+            raise RuntimeError("FTP_PUBLIC_BASE não configurado (URL pública dos arquivos).")
+        if not public_base.startswith("http"):
+            raise RuntimeError(f"FTP_PUBLIC_BASE inválido (precisa começar com http/https): {public_base}")
 
         base_url = (current_app.config.get("BASE_URL") or "").rstrip("/")
         if not base_url:
@@ -132,9 +142,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             event_slug = (ev.slug if ev else "evento")
             show_name = purchase.show_name or ""
 
-            names = _names_from_purchase(purchase)
-            if not names:
-                names = ["Convidado"]
+            names = _names_from_purchase(purchase) or ["Convidado"]
 
             # pasta local por compra
             local_dir = (storage_dir / "tickets" / purchase.token).resolve()
@@ -187,10 +195,13 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 png_paths.append(png_path)
                 pdf_paths.append(pdf_path)
 
-                # ✅ nome do arquivo baseado em nome+sobreNome (slug) + id para evitar colisão
+                # ✅ nome do arquivo baseado em nome+sobreNome (slug) + id (evita colisão)
                 safe_name = slug_filename(person_name)
                 png_remote = f"{safe_name}-{t.id}.png"
                 pdf_remote = f"{safe_name}-{t.id}.pdf"
+
+                _assert_no_slash(png_remote, "png_remote")
+                _assert_no_slash(pdf_remote, "pdf_remote")
 
                 ok_png, info_png = upload_file(png_path, png_remote)
                 if not ok_png:
@@ -203,14 +214,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                 # salva URL pública no Ticket (links individuais)
                 t.png_path = f"{public_base}/{png_remote}"
                 t.pdf_path = f"{public_base}/{pdf_remote}"
-
                 s.add(t)
-
-            print("[FINALIZE] FTP_PUBLIC_BASE raw:", os.getenv("FTP_PUBLIC_BASE"))
-            print("[FINALIZE] public_base used:", public_base)
-            print("[FINALIZE] pdf_all_remote:", pdf_all_remote)
-            print("[FINALIZE] tickets_pdf_url:", f"{public_base}/{pdf_all_remote}")
-
 
             # ✅ bundle (PDF geral + ZIP)
             pdf_all_path = (local_dir / f"{purchase.token}-ingressos.pdf").resolve()
@@ -219,8 +223,12 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             zip_path = (local_dir / f"{purchase.token}-ingressos.zip").resolve()
             _make_zip([pdf_all_path] + pdf_paths + png_paths, zip_path)
 
-            pdf_all_remote = f"{purchase.token}-ingressos.pdf"
-            zip_remote = f"{purchase.token}-ingressos.zip"
+            # ✅ aqui é a correção principal: REMOTO = somente NOME do arquivo
+            pdf_all_remote = pdf_all_path.name
+            zip_remote = zip_path.name
+
+            _assert_no_slash(pdf_all_remote, "pdf_all_remote")
+            _assert_no_slash(zip_remote, "zip_remote")
 
             ok_pdf_all, info_pdf_all = upload_file(pdf_all_path, pdf_all_remote)
             if not ok_pdf_all:
@@ -237,6 +245,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
             s.add(payment)
             s.commit()
 
+            print("[FINALIZE] FTP_PUBLIC_BASE:", public_base)
             print("[FINALIZE] purchase", purchase.id)
             print("[FINALIZE] tickets:", len(names))
             print("[FINALIZE] bundle PDF:", payment.tickets_pdf_url)
