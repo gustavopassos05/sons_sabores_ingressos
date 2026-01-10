@@ -206,6 +206,12 @@ def finalize_purchase_factory() -> Callable[[int], None]:
 
                 s.add(t)
 
+            print("[FINALIZE] FTP_PUBLIC_BASE raw:", os.getenv("FTP_PUBLIC_BASE"))
+            print("[FINALIZE] public_base used:", public_base)
+            print("[FINALIZE] pdf_all_remote:", pdf_all_remote)
+            print("[FINALIZE] tickets_pdf_url:", f"{public_base}/{pdf_all_remote}")
+
+
             # ✅ bundle (PDF geral + ZIP)
             pdf_all_path = (local_dir / f"{purchase.token}-ingressos.pdf").resolve()
             _make_pdf_from_pngs(png_paths, pdf_all_path)
