@@ -1,0 +1,55 @@
+{% extends "admin_base.html" %}
+{% block admin_content %}
+
+<div class="bg-white rounded-2xl shadow p-5">
+  <h2 class="text-xl font-semibold mb-4">Configurações</h2>
+
+  <form method="post" class="space-y-4">
+
+    <div>
+      <label class="text-sm text-zinc-600">Chave Pix (manual)</label>
+      <textarea name="pix_key" rows="3"
+                class="w-full rounded-xl border p-3 text-sm"
+                placeholder="Cole aqui sua chave Pix (email/telefone/cnpj/chave aleatória)">{{ pix_key }}</textarea>
+      <p class="text-xs text-zinc-500 mt-1">
+        Usada na página de pagamento manual.
+      </p>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">WhatsApp (55DDDNUMERO)</label>
+      <input name="whatsapp"
+             class="w-full rounded-xl border p-3 text-sm"
+             placeholder="5531999999999"
+             value="{{ whatsapp }}" />
+      <p class="text-xs text-zinc-500 mt-1">
+        Número que receberá os comprovantes (formato internacional).
+      </p>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Preço por pessoa (centavos)</label>
+      <input name="ticket_price_cents"
+             class="w-full rounded-xl border p-3 text-sm"
+             placeholder="100"
+             value="{{ ticket_price_cents }}" />
+      <p class="text-xs text-zinc-500 mt-1">
+        Ex: 100 = R$ 1,00 / 5000 = R$ 50,00
+      </p>
+    </div>
+
+    <div class="pt-2 flex gap-2">
+      <button class="rounded-xl bg-black text-white px-6 py-3 font-medium">
+        Salvar
+      </button>
+
+      <a href="{{ url_for('admin_panel.home') }}"
+         class="rounded-xl border px-6 py-3 font-medium hover:bg-zinc-50">
+        Voltar
+      </a>
+    </div>
+
+  </form>
+</div>
+
+{% endblock %}
