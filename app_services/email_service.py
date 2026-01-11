@@ -1,4 +1,4 @@
-# services/email_service.py
+# app_services/email_service.py
 import os
 import ssl
 import smtplib

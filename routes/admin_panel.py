@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from db import db
 from models import Payment, AdminSetting
 from routes.admin_auth import admin_required
+from app_services.email_service import send_email
 
 bp_admin_panel = Blueprint("admin_panel", __name__)
 

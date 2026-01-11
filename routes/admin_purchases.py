@@ -6,6 +6,8 @@ from datetime import datetime
 from db import db
 from models import Purchase, Payment, Ticket
 from routes.admin_auth import admin_required
+from app_services.email_service import send_email
+
 
 bp_admin_purchases = Blueprint("admin_purchases", __name__)
 
