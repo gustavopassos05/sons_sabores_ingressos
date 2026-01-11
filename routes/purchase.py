@@ -9,7 +9,7 @@ from sqlalchemy import select
 from db import db
 from models import Event, Purchase, Payment, Ticket
 from pagbank import create_pix_order  # Orders API (PIX)
-from services.email_service import send_receipt_email
+from app_services.email_service import send_email
 
 bp_purchase = Blueprint("purchase", __name__)
 
