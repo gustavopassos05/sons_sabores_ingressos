@@ -1,7 +1,19 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <!-- head normal -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>{{ app_name or "Sons & Sabores" }}</title>
+
+  <!-- CSS PRINCIPAL -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+
+  <!-- Tailwind CDN (se estiver usando CDN) -->
+  <!--
+  <script src="https://cdn.tailwindcss.com"></script>
+  -->
+
 </head>
 <body class="bg-zinc-100 text-zinc-900">
 
