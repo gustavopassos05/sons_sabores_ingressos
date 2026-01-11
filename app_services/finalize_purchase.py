@@ -19,7 +19,8 @@ from app_services.ticket_generator import (
     slug_filename,
 )
 from app_services.ftp_uploader import upload_file
-from services.email_service import send_receipt_email
+from app_services.email_service import send_email
+
 
 
 
