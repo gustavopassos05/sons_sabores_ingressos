@@ -4,8 +4,7 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Ticket, Payment
-from services.email_service import send_receipt_email
-
+from app_services.email_service import send_email
 
 bp_tickets = Blueprint("tickets", __name__)
 
