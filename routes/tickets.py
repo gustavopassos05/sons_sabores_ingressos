@@ -7,9 +7,10 @@ from models import Purchase, Ticket, Payment
 
 bp_tickets = Blueprint("tickets", __name__)
 
-@bp_tickets.get("/admin")
-def admin_tickets():
-    return render_template("admin_tickets.html")
+@bp_tickets.get("/admin/tickets-old")
+def admin_tickets_old():
+    # você pode até apagar o template antigo depois
+    return redirect(url_for("admin_panel.home"))
 
 from flask import current_app
 
