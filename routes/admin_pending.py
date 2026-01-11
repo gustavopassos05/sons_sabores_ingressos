@@ -6,6 +6,8 @@ from sqlalchemy import select, desc
 from db import db
 from models import Purchase, Payment
 from routes.admin_auth import admin_required
+from services.email_service import send_receipt_email
+
 
 bp_admin_pending = Blueprint("admin_pending", __name__)
 
