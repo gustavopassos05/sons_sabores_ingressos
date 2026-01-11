@@ -18,6 +18,8 @@ from routes.admin_pending import bp_admin_pending
 from routes.admin_panel import bp_admin_panel
 from routes.admin_auth import bp_admin_auth
 from routes.admin_settings import bp_admin_settings
+from routes.admin_purchases import bp_admin_purchases
+
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
 
@@ -66,7 +68,7 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_panel)
     app.register_blueprint(bp_admin_auth)
     app.register_blueprint(bp_admin_settings)
-
+    app.register_blueprint(bp_admin_purchases)
 
     # ✅ pluga o finalizador (webhook usa isso)
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
