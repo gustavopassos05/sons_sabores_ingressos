@@ -1,5 +1,5 @@
 # routes/admin_purchases.py
-from flask import Blueprint, render_template, request, abort, current_app
+from flask import Blueprint, render_template, request, abort, flash
 from sqlalchemy import select, desc, func
 from datetime import datetime
 

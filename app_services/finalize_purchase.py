@@ -19,10 +19,6 @@ from app_services.ticket_generator import (
     slug_filename,
 )
 from app_services.ftp_uploader import upload_file
-from app_services.email_service import send_email
-
-
-
 
 def _names_from_purchase(p: Purchase) -> List[str]:
     """
