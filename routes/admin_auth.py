@@ -29,7 +29,7 @@ def admin_login_post():
         return redirect(url_for("admin_auth.admin_login"))
 
     session["is_admin"] = True
-    return redirect(url_for("admin_panel.admin_home"))
+    return redirect(url_for("admin_panel.home"))
 
 @bp_admin_auth.post("/admin/logout")
 def admin_logout():
