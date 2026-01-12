@@ -99,7 +99,7 @@ def buy_post(event_slug: str):
     guests_text = "\n".join(guests_lines)
 
     # ✅ total por pessoa (comprador + convidados)
-    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # R$ 1,00
+    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "5000"))  # R$ 50,00
     total_people = 1 + len(guests_lines)
     total_cents = price_cents_unit * total_people
 
