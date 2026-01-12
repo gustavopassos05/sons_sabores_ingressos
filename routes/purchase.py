@@ -365,6 +365,7 @@ def pay_manual(token: str):
         )
         if not payment:
             abort(404)
+    max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
 
     return render_template(
         "pay_manual.html",
@@ -389,3 +390,80 @@ def pay_manual_thanks(token: str):
         purchase=purchase,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+
+@bp_purchase.post("/pay/manual/upload/<token>")
+def upload_receipt(token: str):
+    # valida compra/pagamento
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+
+        payment = s.scalar(
+            select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc())
+        )
+        if not payment:
+            abort(404)
+
+    f = request.files.get("receipt_file")
+    if not f or not f.filename:
+        flash("Selecione um arquivo (imagem ou PDF).", "error")
+        return redirect(url_for("purchase.pay_manual", token=token))
+
+    max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
+    max_bytes = max_mb * 1024 * 1024
+
+    # tamanho
+    f.stream.seek(0, os.SEEK_END)
+    size = f.stream.tell()
+    f.stream.seek(0)
+    if size > max_bytes:
+        flash(f"Arquivo muito grande (máx {max_mb}MB).", "error")
+        return redirect(url_for("purchase.pay_manual", token=token))
+
+    # tipo
+    mime = (f.mimetype or "").lower()
+    allowed = {"application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if mime not in allowed and not mime.startswith("image/"):
+        flash("Formato inválido. Envie imagem ou PDF.", "error")
+        return redirect(url_for("purchase.pay_manual", token=token))
+
+    # salva temporário
+    tmp_dir = Path("/tmp/receipts").resolve()
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    safe = secure_filename(f.filename) or "comprovante"
+    tmp_path = tmp_dir / f"{token}-{safe}"
+    f.save(tmp_path)
+
+    # envia para seu email (destino)
+    to_email = (os.getenv("RECEIPT_TO_EMAIL") or "").strip()
+    if not to_email:
+        raise RuntimeError("RECEIPT_TO_EMAIL não configurado no Render.")
+
+    subject = f"Comprovante PIX · {purchase.buyer_name} · {purchase.show_name}"
+    total_brl = (payment.amount_cents or 0) / 100
+
+    body = (
+        "Novo comprovante enviado pelo site.\n\n"
+        f"Show: {purchase.show_name}\n"
+        f"Comprador: {purchase.buyer_name}\n"
+        f"CPF: {purchase.buyer_cpf}\n"
+        f"Email: {purchase.buyer_email}\n"
+        f"Telefone: {purchase.buyer_phone}\n"
+        f"Token: {purchase.token}\n"
+        f"Valor: R$ {total_brl:.2f}\n\n"
+        "Abra o painel Admin → Pendências/Compras para confirmar o pagamento.\n"
+        "Os ingressos serão enviados em até 72 horas.\n"
+    )
+
+    # envia email (texto + sem HTML aqui; pode adicionar depois)
+    # (se você quiser HTML, me fala e eu adapto)
+    send_email(
+        to_email=to_email,
+        subject=subject,
+        body_text=body,
+    )
+
+    flash("Comprovante enviado ✅ Obrigado!", "success")
+    return redirect(url_for("purchase.pay_manual_thanks", token=token))
