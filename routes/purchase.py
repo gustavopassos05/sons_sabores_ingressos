@@ -74,7 +74,7 @@ def buy(event_slug: str):
         ticket_price_cents=ticket_price_cents,
     )
 
-    )
+    
 
 
 @bp_purchase.post("/buy/<event_slug>")
