@@ -1,6 +1,24 @@
 # app_services/email_templates.py
+import os
 from typing import List, Dict, Optional
-from datetime import datetime
+
+
+def _unit_price_cents_from_env(default: int = 5000) -> int:
+    """
+    Lê TICKET_PRICE_CENTS do Render/ENV.
+    default=5000 => R$ 50,00
+    """
+    raw = (os.getenv("TICKET_PRICE_CENTS") or "").strip()
+    try:
+        v = int(raw)
+        return v if v > 0 else default
+    except Exception:
+        return default
+
+
+def _fmt_brl_from_cents(cents: int) -> str:
+    return f"{(cents / 100):.2f}".replace(".", ",")
+
 
 def build_tickets_email(
     *,
@@ -8,23 +26,34 @@ def build_tickets_email(
     show_name: str,
     total_brl: float,
     token: str,
+    ticket_qty: int,
     pdf_all_url: str = "",
     zip_url: str = "",
     tickets: Optional[List[Dict[str, str]]] = None,  # [{name, pdf, png}]
 ) -> tuple[str, str, str]:
     """
     Retorna: (subject, text, html)
+
+    - Valor unitário vem de ENV: TICKET_PRICE_CENTS (ex: 5000)
+    - HTML mobile-first (botões grandes, coluna única)
     """
+    unit_cents = _unit_price_cents_from_env(5000)
+    unit_brl_str = _fmt_brl_from_cents(unit_cents)
+
     subject = f"Ingressos Sons & Sabores — {show_name}"
 
+    # ======================
+    # TEXTO (fallback)
+    # ======================
     lines = []
     lines.append(f"Olá, {buyer_name}!")
     lines.append("")
     lines.append("Seus ingressos do Sons & Sabores estão prontos ✅")
     lines.append("")
     lines.append(f"Show: {show_name}")
-    lines.append(f"Token da compra: {token}")
+    lines.append(f"Ingressos: {ticket_qty} × R$ {unit_brl_str}")
     lines.append(f"Total: R$ {total_brl:.2f}")
+    lines.append(f"Token da compra: {token}")
     lines.append("")
 
     if zip_url:
@@ -49,49 +78,86 @@ def build_tickets_email(
     lines.append("Qualquer dúvida, responda este e-mail.")
     text = "\n".join(lines)
 
-    # HTML simples e bonito
-    def _a(url: str, label: str) -> str:
-        return f'<a href="{url}" target="_blank" style="color:#111;text-decoration:underline">{label}</a>'
+    # ======================
+    # HTML (mobile-first)
+    # ======================
+    # helpers inline-friendly
+    def btn(url: str, label: str) -> str:
+        # botão grande (tap-friendly)
+        return (
+            f'<a href="{url}" target="_blank" '
+            f'style="display:block;background:#111;color:#fff;text-decoration:none;'
+            f'padding:14px 16px;border-radius:14px;font-size:16px;text-align:center;'
+            f'margin:8px 0;">{label}</a>'
+        )
 
-    html_parts = []
-    html_parts.append('<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:16px">')
-    html_parts.append('<h2 style="margin:0 0 6px 0">Ingressos — Sons & Sabores ✅</h2>')
-    html_parts.append(f'<div style="color:#666;font-size:14px;margin-bottom:16px">{show_name}</div>')
+    def link(url: str, label: str) -> str:
+        return f'<a href="{url}" target="_blank" style="color:#111;text-decoration:underline;">{label}</a>'
 
-    html_parts.append('<div style="border:1px solid #eee;border-radius:14px;padding:14px;margin-bottom:14px">')
-    html_parts.append(f'<div><b>Comprador:</b> {buyer_name}</div>')
-    html_parts.append(f'<div><b>Total:</b> R$ {total_brl:.2f}</div>')
-    html_parts.append(f'<div style="color:#666;font-size:12px;margin-top:6px"><b>Token:</b> {token}</div>')
-    html_parts.append('</div>')
+    total_brl_str = f"{total_brl:.2f}".replace(".", ",")
 
+    html = f"""
+<div style="font-family: Arial, sans-serif; background:#f4f4f5; padding:16px;">
+  <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:18px; padding:18px;">
+    <div style="font-size:22px; font-weight:700; margin-bottom:6px;">
+      Ingressos — Sons & Sabores ✅
+    </div>
+    <div style="color:#666; font-size:14px; margin-bottom:16px;">
+      {show_name}
+    </div>
+
+    <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
+      <div style="font-size:16px; margin-bottom:6px;"><b>Comprador:</b> {buyer_name}</div>
+      <div style="font-size:16px; margin-bottom:6px;"><b>Ingressos:</b> {ticket_qty} × R$ {unit_brl_str}</div>
+      <div style="font-size:18px; margin-bottom:6px;"><b>Total:</b> R$ {total_brl_str}</div>
+      <div style="color:#666; font-size:12px;"><b>Token:</b> {token}</div>
+    </div>
+"""
+
+    # Downloads com botões (melhor no celular)
     if zip_url or pdf_all_url:
-        html_parts.append('<div style="border:1px solid #eee;border-radius:14px;padding:14px;margin-bottom:14px">')
-        html_parts.append('<div style="margin-bottom:8px"><b>Downloads</b></div>')
+        html += """
+    <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
+      <div style="font-size:16px; font-weight:700; margin-bottom:8px;">Downloads</div>
+"""
         if zip_url:
-            html_parts.append(f'<div>📦 {_a(zip_url, "Baixar todos (ZIP)")}</div>')
+            html += f"{btn(zip_url, '📦 Baixar todos (ZIP)')}"
         if pdf_all_url:
-            html_parts.append(f'<div>📄 {_a(pdf_all_url, "PDF com todos")}</div>')
-        html_parts.append('</div>')
+            html += f"{btn(pdf_all_url, '📄 PDF com todos')}"
+        html += "    </div>\n"
 
+    # Lista individual (em mobile, link simples — sem poluir)
     if tickets:
-        html_parts.append('<div style="border:1px solid #eee;border-radius:14px;padding:14px;margin-bottom:14px">')
-        html_parts.append('<div style="margin-bottom:8px"><b>Ingressos individuais</b></div>')
-        html_parts.append('<ul style="margin:0;padding-left:18px">')
+        html += """
+    <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
+      <div style="font-size:16px; font-weight:700; margin-bottom:8px;">Ingressos individuais</div>
+      <div style="font-size:14px; color:#444;">
+"""
         for t in tickets:
             nm = t.get("name", "Pessoa")
             pdf = t.get("pdf", "")
             png = t.get("png", "")
             if pdf:
-                html_parts.append(f'<li>{nm}: {_a(pdf, "PDF")}</li>')
+                html += f'<div style="margin:6px 0;">• {nm}: {link(pdf, "PDF")}</div>'
             elif png:
-                html_parts.append(f'<li>{nm}: {_a(png, "PNG")}</li>')
+                html += f'<div style="margin:6px 0;">• {nm}: {link(png, "PNG")}</div>'
             else:
-                html_parts.append(f'<li>{nm}</li>')
-        html_parts.append('</ul>')
-        html_parts.append('</div>')
+                html += f'<div style="margin:6px 0;">• {nm}</div>'
+        html += """
+      </div>
+    </div>
+"""
 
-    html_parts.append('<div style="color:#666;font-size:12px">Apresente o QR Code dentro do ingresso na entrada.</div>')
-    html_parts.append('</div>')
-    html = "".join(html_parts)
+    html += """
+    <div style="color:#666; font-size:12px; line-height:1.4;">
+      Apresente o QR Code dentro do ingresso na entrada.<br/>
+      Se precisar, responda este e-mail.
+    </div>
+  </div>
 
+  <div style="max-width:640px; margin:10px auto 0; color:#999; font-size:11px; text-align:center;">
+    Borogodó · Sons & Sabores
+  </div>
+</div>
+"""
     return subject, text, html

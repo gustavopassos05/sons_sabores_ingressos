@@ -21,7 +21,6 @@ def _digits(s: str) -> str:
 
 
 def _cpf_allowed(cpf_digits: str) -> bool:
-    # CPF_ALLOWLIST="11122233344,55566677788"
     raw = (os.getenv("CPF_ALLOWLIST") or "").strip()
     if not raw:
         return True
@@ -42,6 +41,23 @@ def _is_expired_payment(p: Payment) -> bool:
     return False
 
 
+def _parse_guests(guests_text: str) -> list[str]:
+    """
+    Aceita convidados por linha ou separado por ',' ';'
+    """
+    raw = (guests_text or "").strip()
+    if not raw:
+        return []
+    tmp: list[str] = []
+    for line in raw.splitlines():
+        line = (line or "").strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
+        tmp.extend(parts)
+    return tmp
+
+
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
     with db() as s:
@@ -49,11 +65,15 @@ def buy(event_slug: str):
         if not ev:
             abort(404)
 
+    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
     return render_template(
         "buy.html",
         event=ev,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
         form={},
+        ticket_price_cents=ticket_price_cents,
+    )
+
     )
 
 
@@ -87,23 +107,14 @@ def buy_post(event_slug: str):
         flash("Este CPF ainda não está liberado para compra.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # ✅ convidados: linhas OU vírgula/;
     guests_raw = (request.form.get("guests_text") or "").strip()
-    tmp = []
-    for line in guests_raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
-        tmp.extend(parts)
-
-    guests_lines = tmp
+    guests_lines = _parse_guests(guests_raw)
     guests_text = "\n".join(guests_lines)
 
-    # ✅ total por pessoa (comprador + convidados)
-    price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "5000"))  # R$ 50,00
+    # ✅ R$ 50,00 por ingresso
+    unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
     total_people = 1 + len(guests_lines)
-    total_cents = price_cents_unit * total_people
+    total_cents = unit_price_cents * total_people
 
     exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
     expires_at_local = datetime.utcnow() + timedelta(minutes=exp_min)
@@ -115,9 +126,7 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # ===============================
         # Anti-duplicidade (CPF + show + evento)
-        # ===============================
         existing_purchase = s.scalar(
             select(Purchase)
             .where(
@@ -149,11 +158,8 @@ def buy_post(event_slug: str):
                         return redirect(url_for("purchase.pay_pix", payment_id=existing_payment.id))
                     if existing_payment.provider == "manual_pix":
                         return redirect(url_for("purchase.pay_manual", token=existing_purchase.token))
-                # mudou convidados -> cria nova
 
-        # ===============================
         # cria nova compra
-        # ===============================
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
@@ -170,12 +176,9 @@ def buy_post(event_slug: str):
         s.add(purchase)
         s.commit()
 
-        # webhook PIX Orders
         pagbank_notification_url = f"{base_url}/webhooks/pagbank"
 
-        # ===============================
-        # TENTA PIX Orders API -> se der 403/whitelist, cai no PIX manual
-        # ===============================
+        # tenta PIX Orders API -> se der whitelist, cai no manual
         try:
             order_id, qr_text, qr_b64, expires_at = create_pix_order(
                 reference_id=f"purchase-{purchase.id}",
@@ -207,7 +210,6 @@ def buy_post(event_slug: str):
             return redirect(url_for("purchase.pay_pix", payment_id=payment.id))
 
         except Exception as e:
-            # ✅ fallback manual (não estoura 500 no usuário)
             current_app.logger.warning("[PIX FALLBACK] create_pix_order falhou: %s", e)
 
             payment = Payment(
@@ -241,11 +243,9 @@ def pay_pix(payment_id: int):
 
         ev = s.get(Event, purchase.event_id)
 
-        # já pago -> vai pros ingressos
         if (purchase.status or "").lower() == "paid" or (p.status or "").lower() == "paid":
             return redirect(url_for("tickets.purchase_public", token=purchase.token))
 
-        # ✅ se expirou, marca failed (pra sua regra de duplicidade deixar criar nova)
         if p.expires_at and p.status == "pending" and p.expires_at < now:
             p.status = "failed"
             purchase.status = "failed"
@@ -253,20 +253,10 @@ def pay_pix(payment_id: int):
             s.add(purchase)
             s.commit()
             return redirect(url_for("purchase.pay_return", token=purchase.token))
-        price_cents_unit = int(os.getenv("TICKET_PRICE_CENTS", "100"))  # R$ 1,00 padrão
 
-    # convidados: usar a MESMA lógica do buy_post
-    guests_raw = (purchase.guests_text or "").strip()
-    tmp = []
-    for line in guests_raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
-        tmp.extend(parts)
-
-    total_people = 1 + len(tmp)
-
+        unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+        guests_lines = _parse_guests(purchase.guests_text or "")
+        total_people = 1 + len(guests_lines)
 
     return render_template(
         "pay_pix.html",
@@ -274,7 +264,7 @@ def pay_pix(payment_id: int):
         payment=p,
         purchase=purchase,
         event=ev,
-        ticket_price_cents=price_cents_unit,
+        ticket_price_cents=unit_price_cents,
         total_people=total_people,
     )
 
@@ -316,7 +306,6 @@ def pay_return(token: str):
 
     purchase, payment, tickets = _load()
 
-    # se pagou mas ainda não gerou links, tenta finalize
     if (
         payment
         and (payment.status or "").lower() == "paid"
@@ -329,7 +318,6 @@ def pay_return(token: str):
             pass
         purchase, payment, tickets = _load()
 
-    # se pagou, vai pra página final
     if (purchase.status or "").lower() == "paid":
         return redirect(url_for("tickets.purchase_public", token=purchase.token))
 
@@ -341,14 +329,16 @@ def pay_return(token: str):
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
 
+
 @bp_purchase.get("/pay/manual/<token>")
 def pay_manual(token: str):
+    # mantém ENV por enquanto (você já tem WHATSAPP_NUMBER no Render)
     pix_key = (os.getenv("PIX_MANUAL_KEY") or "").strip()
     whatsapp_number = _digits(os.getenv("WHATSAPP_NUMBER", "")).strip()
+
     receiver = (os.getenv("PIX_MANUAL_RECEIVER_NAME") or "").strip()
     bank = (os.getenv("PIX_MANUAL_BANK") or "").strip()
 
-    # QR estático opcional: coloque um arquivo em static/pix_qr.png
     qr_image_url = url_for("static", filename="pix_qr.png") if os.path.exists("static/pix_qr.png") else ""
 
     with db() as s:
@@ -357,7 +347,9 @@ def pay_manual(token: str):
             abort(404)
 
         payment_paid = s.scalar(
-            select(Payment).where(Payment.purchase_id == purchase.id, Payment.status == "paid").order_by(Payment.id.desc())
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+            .order_by(Payment.id.desc())
         )
         if payment_paid:
             return redirect(url_for("tickets.purchase_public", token=purchase.token))
@@ -367,7 +359,12 @@ def pay_manual(token: str):
         )
         if not payment:
             abort(404)
+
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
+    unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    unit_price_brl = unit_price_cents / 100
+    ticket_qty = (payment.amount_cents or 0) // unit_price_cents if unit_price_cents else 0
+
 
     return render_template(
         "pay_manual.html",
@@ -378,8 +375,14 @@ def pay_manual(token: str):
         whatsapp_number=whatsapp_number,
         receiver=receiver,
         bank=bank,
+        max_mb=max_mb,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+        unit_price_cents=unit_price_cents,
+        unit_price_brl=unit_price_brl,
+        ticket_qty=ticket_qty,
+
     )
+
 
 @bp_purchase.get("/pay/manual/thanks/<token>")
 def pay_manual_thanks(token: str):
@@ -393,9 +396,9 @@ def pay_manual_thanks(token: str):
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
 
+
 @bp_purchase.post("/pay/manual/upload/<token>")
 def upload_receipt(token: str):
-    # valida compra/pagamento
     with db() as s:
         purchase = s.scalar(select(Purchase).where(Purchase.token == token))
         if not purchase:
@@ -415,22 +418,20 @@ def upload_receipt(token: str):
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
     max_bytes = max_mb * 1024 * 1024
 
-    # tamanho
     f.stream.seek(0, os.SEEK_END)
     size = f.stream.tell()
     f.stream.seek(0)
+
     if size > max_bytes:
         flash(f"Arquivo muito grande (máx {max_mb}MB).", "error")
         return redirect(url_for("purchase.pay_manual", token=token))
 
-    # tipo
     mime = (f.mimetype or "").lower()
     allowed = {"application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"}
     if mime not in allowed and not mime.startswith("image/"):
         flash("Formato inválido. Envie imagem ou PDF.", "error")
         return redirect(url_for("purchase.pay_manual", token=token))
 
-    # salva temporário
     tmp_dir = Path("/tmp/receipts").resolve()
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -438,7 +439,6 @@ def upload_receipt(token: str):
     tmp_path = tmp_dir / f"{token}-{safe}"
     f.save(tmp_path)
 
-    # envia para seu email (destino)
     to_email = (os.getenv("RECEIPT_TO_EMAIL") or "").strip()
     if not to_email:
         raise RuntimeError("RECEIPT_TO_EMAIL não configurado no Render.")
@@ -454,13 +454,13 @@ def upload_receipt(token: str):
         f"Email: {purchase.buyer_email}\n"
         f"Telefone: {purchase.buyer_phone}\n"
         f"Token: {purchase.token}\n"
-        f"Valor: R$ {total_brl:.2f}\n\n"
+        f"Ingressos: {(payment.amount_cents or 0) // int(os.getenv('TICKET_PRICE_CENTS','5000'))} (R$ 50,00 cada)\n"
+        f"Valor total: R$ {total_brl:.2f}\n\n"
         "Abra o painel Admin → Pendências/Compras para confirmar o pagamento.\n"
         "Os ingressos serão enviados em até 72 horas.\n"
     )
 
-    # envia email (texto + sem HTML aqui; pode adicionar depois)
-    # (se você quiser HTML, me fala e eu adapto)
+    # envia email simples (texto)
     send_email(
         to_email=to_email,
         subject=subject,

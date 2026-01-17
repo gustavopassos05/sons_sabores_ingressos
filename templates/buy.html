@@ -15,7 +15,6 @@
           <option value="{{ s }}">{{ s }}</option>
         {% endfor %}
       </select>
-      <p class="text-xs text-zinc-500 mt-1">Escolha o show para esta compra.</p>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -25,8 +24,20 @@
       </div>
       <div>
         <label class="text-sm text-zinc-600">CPF do comprador</label>
-        <input name="buyer_cpf" class="w-full rounded-xl border p-3 text-sm" required />
+
+        <input
+          id="cpf"
+          name="buyer_cpf"
+          inputmode="numeric"
+          placeholder="000.000.000-00"
+          maxlength="14"
+          class="w-full rounded-xl border p-3 text-sm"
+          required
+        />
+        <p id="cpf_hint" class="text-xs text-zinc-500 mt-1"></p>
+
       </div>
+
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -36,31 +47,41 @@
       </div>
       <div>
         <label class="text-sm text-zinc-600">Telefone</label>
-        <input name="buyer_phone" class="w-full rounded-xl border p-3 text-sm" />
+        <input
+          id="phone"
+          name="buyer_phone"
+          inputmode="tel"
+          placeholder="(31) 9 9999-9999"
+          maxlength="16"
+          class="w-full rounded-xl border p-3 text-sm"
+        />
+        <p id="phone_hint" class="text-xs text-zinc-500 mt-1"></p>
+
       </div>
+
     </div>
 
     <div>
-      <label class="text-sm text-zinc-600">Convidados (1 por linha ou separado por vírgula/;)</label>
+      <label class="text-sm text-zinc-600">Acompanhantes (linha ou separado por vírgula/;)</label>
       <textarea id="guests_text" name="guests_text" rows="5"
                 class="w-full rounded-xl border p-3 text-sm"
                 placeholder="Ex: Maria&#10;João&#10;Ana, Pedro; Carla"></textarea>
       <p class="text-xs text-zinc-500 mt-1">
-        O comprador já conta como 1 pessoa. Aqui você adiciona as demais.
+        O comprador já conta como 1 ingresso.
       </p>
     </div>
 
-    <!-- ✅ PREVIEW DO TOTAL -->
+    <!-- ✅ PREVIEW DO TOTAL (dinâmico do ENV) -->
     <div class="rounded-2xl border p-4 bg-zinc-50">
       <div class="text-sm text-zinc-700 space-y-1">
-        <div><span class="font-semibold">Valor por pessoa:</span> <span id="unit_price_lbl">R$ 50,00</span></div>
-        <div><span class="font-semibold">Total de pessoas:</span> <span id="total_people_lbl">1</span></div>
+        <div><span class="font-semibold">Valor por ingresso:</span> <span id="unit_price_lbl">—</span></div>
+        <div><span class="font-semibold">Total de ingressos:</span> <span id="total_people_lbl">1</span></div>
         <div class="text-base">
-          <span class="font-semibold">Total a pagar:</span> <span id="total_price_lbl">R$ 50,00</span>
+          <span class="font-semibold">Total a pagar:</span> <span id="total_price_lbl">—</span>
         </div>
       </div>
       <p class="text-xs text-zinc-500 mt-2">
-        Esta é uma prévia. O valor final é calculado no servidor.
+        Prévia calculada automaticamente. O valor final é validado no servidor.
       </p>
     </div>
 
@@ -72,10 +93,8 @@
 </div>
 
 <script>
-  // 🔧 pega do backend via env (render) se você quiser:
-  // Como template não lê env direto, deixo default 100 (R$1,00).
-  // Se quiser passar esse valor do Flask pro template, eu te mostro.
-  const ticketPriceCents = 5000;
+  // ✅ vindo do backend (ENV TICKET_PRICE_CENTS)
+  const ticketPriceCents = {{ ticket_price_cents|default(5000) }};
 
   function parseGuests(raw) {
     raw = (raw || "").trim();
@@ -99,7 +118,7 @@
   }
 
   function formatBRLFromCents(cents) {
-    const v = (cents / 5000).toFixed(2).replace(".", ",");
+    const v = (cents / 100).toFixed(2).replace(".", ",");
     return "R$ " + v;
   }
 
@@ -116,6 +135,141 @@
 
   document.getElementById("guests_text").addEventListener("input", updatePreview);
   updatePreview();
+</script>
+<script>
+  function onlyDigits(v) {
+    return (v || "").replace(/\D/g, "");
+  }
+
+  // CPF: 000.000.000-00
+  function maskCPF(value) {
+    const d = onlyDigits(value).slice(0, 11);
+
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return d.replace(/(\d{3})(\d+)/, "$1.$2");
+    if (d.length <= 9) return d.replace(/(\d{3})(\d{3})(\d+)/, "$1.$2.$3");
+    return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  }
+
+  // Telefone: (31) 9 9999-9999 ou (31) 3333-4444
+  function maskPhone(value) {
+    const d = onlyDigits(value).slice(0, 11);
+
+    if (d.length <= 2) return d;
+    if (d.length <= 6) return d.replace(/(\d{2})(\d+)/, "($1) $2");
+
+    // celular (11 dígitos)
+    if (d.length === 11) {
+      return d.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2 $3-$4");
+    }
+
+    // fixo (10 dígitos)
+    return d.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  }
+
+  // ✅ valida CPF (dígitos verificadores)
+  function isValidCPF(cpfDigits) {
+    const cpf = onlyDigits(cpfDigits);
+    if (cpf.length !== 11) return false;
+    if (/^(\d)\1{10}$/.test(cpf)) return false; // todos iguais
+
+    // calcula digito 1
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(cpf[i], 10) * (10 - i);
+    let d1 = (sum * 10) % 11;
+    if (d1 === 10) d1 = 0;
+    if (d1 !== parseInt(cpf[9], 10)) return false;
+
+    // calcula digito 2
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(cpf[i], 10) * (11 - i);
+    let d2 = (sum * 10) % 11;
+    if (d2 === 10) d2 = 0;
+    if (d2 !== parseInt(cpf[10], 10)) return false;
+
+    return true;
+  }
+
+  function setFieldState(input, hintEl, ok, msg) {
+    if (!input) return;
+    input.classList.remove("border-red-400", "border-green-400", "ring-2", "ring-red-200", "ring-green-200");
+
+    if (ok === null) {
+      // neutro
+      if (hintEl) hintEl.textContent = msg || "";
+      if (hintEl) hintEl.className = "text-xs text-zinc-500 mt-1";
+      return;
+    }
+
+    if (ok) {
+      input.classList.add("border-green-400", "ring-2", "ring-green-200");
+      if (hintEl) hintEl.textContent = msg || "Ok ✅";
+      if (hintEl) hintEl.className = "text-xs text-green-700 mt-1";
+    } else {
+      input.classList.add("border-red-400", "ring-2", "ring-red-200");
+      if (hintEl) hintEl.textContent = msg || "Verifique este campo.";
+      if (hintEl) hintEl.className = "text-xs text-red-700 mt-1";
+    }
+  }
+
+  const cpfInput = document.getElementById("cpf");
+  const phoneInput = document.getElementById("phone");
+  const cpfHint = document.getElementById("cpf_hint");
+  const phoneHint = document.getElementById("phone_hint");
+
+  // CPF: máscara + validação progressiva
+  if (cpfInput) {
+    cpfInput.addEventListener("input", () => {
+      cpfInput.value = maskCPF(cpfInput.value);
+
+      const d = onlyDigits(cpfInput.value);
+      if (d.length === 0) {
+        setFieldState(cpfInput, cpfHint, null, "");
+        return;
+      }
+      if (d.length < 11) {
+        setFieldState(cpfInput, cpfHint, null, "Digite os 11 dígitos do CPF.");
+        return;
+      }
+
+      const ok = isValidCPF(d);
+      setFieldState(cpfInput, cpfHint, ok, ok ? "CPF válido ✅" : "CPF inválido. Confira os números.");
+    });
+
+    // valida no blur também
+    cpfInput.addEventListener("blur", () => {
+      const d = onlyDigits(cpfInput.value);
+      if (d.length === 11) {
+        const ok = isValidCPF(d);
+        setFieldState(cpfInput, cpfHint, ok, ok ? "CPF válido ✅" : "CPF inválido. Confira os números.");
+      }
+    });
+  }
+
+  // Telefone: máscara + validação simples (mín 10 dígitos se preenchido)
+  if (phoneInput) {
+    phoneInput.addEventListener("input", () => {
+      phoneInput.value = maskPhone(phoneInput.value);
+
+      const d = onlyDigits(phoneInput.value);
+      if (d.length === 0) {
+        setFieldState(phoneInput, phoneHint, null, "");
+        return;
+      }
+      if (d.length < 10) {
+        setFieldState(phoneInput, phoneHint, false, "Telefone incompleto (mín. 10 dígitos com DDD).");
+        return;
+      }
+      setFieldState(phoneInput, phoneHint, true, "Telefone ok ✅");
+    });
+
+    phoneInput.addEventListener("blur", () => {
+      const d = onlyDigits(phoneInput.value);
+      if (d.length > 0 && d.length < 10) {
+        setFieldState(phoneInput, phoneHint, false, "Telefone incompleto (mín. 10 dígitos com DDD).");
+      }
+    });
+  }
 </script>
 
 {% endblock %}

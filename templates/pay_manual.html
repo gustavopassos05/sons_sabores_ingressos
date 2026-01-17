@@ -12,9 +12,21 @@
     </div>
   </div>
 
+  {# valores vindos do backend (ENV) #}
+  {% set unit_brl = unit_price_brl if unit_price_brl is defined else 50.00 %}
+  {% set qty = ticket_qty if ticket_qty is defined else 0 %}
+  {% set total_price = (payment.amount_cents or 0) / 100 %}
+
   <div class="text-sm text-zinc-700 space-y-1 mb-4">
     <div><span class="font-semibold">Comprador:</span> {{ purchase.buyer_name }}</div>
-    <div><span class="font-semibold">Total:</span> R$ {{ '%.2f'|format((payment.amount_cents or 0) / 100) }}</div>
+
+    <div><span class="font-semibold">Ingressos:</span> {{ qty }}</div>
+    <div><span class="font-semibold">Valor unitário:</span> R$ {{ '%.2f'|format(unit_brl) }}</div>
+
+    <div class="text-base font-semibold">
+      Total: R$ {{ '%.2f'|format(total_price) }}
+    </div>
+
     <div class="text-xs text-zinc-500 break-all">
       <span class="font-semibold">Token da compra:</span> {{ purchase.token }}
     </div>
@@ -48,7 +60,8 @@
     "2) Envie a mensagem\n\n" ~
     "Show: " ~ purchase.show_name ~ "\n" ~
     "Comprador: " ~ purchase.buyer_name ~ "\n" ~
-    "Valor: R$ " ~ ('%.2f'|format((payment.amount_cents or 0)/100)) ~ "\n" ~
+    "Ingressos: " ~ qty ~ " × R$ " ~ ('%.2f'|format(unit_brl)) ~ "\n" ~
+    "Valor total: R$ " ~ ('%.2f'|format(total_price)) ~ "\n" ~
     "Token da compra: " ~ purchase.token ~ "\n\n" ~
     "Os ingressos serão enviados em até 72 horas."
   %}
@@ -76,7 +89,7 @@
     </button>
   </div>
 
-  <!-- ✅ UPLOAD DO COMPROVANTE (opção 3) -->
+  <!-- ✅ UPLOAD DO COMPROVANTE -->
   <div class="mt-6 rounded-xl border p-4">
     <div class="font-semibold mb-1">Enviar comprovante aqui (mais fácil)</div>
     <p class="text-sm text-zinc-600 mb-3">
