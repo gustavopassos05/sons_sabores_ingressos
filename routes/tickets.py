@@ -69,4 +69,5 @@ def purchase_public(token: str):
             payment = s.scalar(select(Payment).where(Payment.purchase_id == purchase.id, Payment.status == "paid").order_by(Payment.id.desc())) \
                       or s.scalar(select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc()))
 
-    return render_template("purchase_public.html", purchase=purchase, tickets=tickets, payment=payment)
+    return redirect(url_for("purchase.purchase_status", token=token))
+

@@ -74,7 +74,7 @@ def buy(event_slug: str):
         ticket_price_cents=ticket_price_cents,
     )
 
-    
+
 
 
 @bp_purchase.post("/buy/<event_slug>")
@@ -468,4 +468,30 @@ def upload_receipt(token: str):
     )
 
     flash("Comprovante enviado ✅ Obrigado!", "success")
-    return redirect(url_for("purchase.pay_manual_thanks", token=token))
+    return redirect(url_for("purchase.purchase_status", token=token))
+
+@bp_purchase.get("/status/<token>")
+def purchase_status(token: str):
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+
+        payment_paid = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+            .order_by(Payment.id.desc())
+        )
+        payment = payment_paid or s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(Payment.id.desc())
+        )
+
+    # SEM ingressos aqui
+    return render_template(
+        "purchase_status.html",
+        purchase=purchase,
+        payment=payment,
+        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
+    )
