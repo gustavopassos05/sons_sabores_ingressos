@@ -122,6 +122,16 @@
                     onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
               WhatsApp
             </button>
+            {% if p.buyer_email %}
+              <form method="post" action="{{ url_for('admin_purchases.admin_send_purchase_email_buyer', purchase_id=p.id) }}">
+                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                  Enviar para email do comprador
+                </button>
+              </form>
+            {% else %}
+              <div class="text-xs text-zinc-400">Sem e-mail do comprador</div>
+            {% endif %}
+
 
           </div>
         </div>
