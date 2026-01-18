@@ -111,7 +111,7 @@ def buy_post(event_slug: str):
     guests_lines = _parse_guests(guests_raw)
     guests_text = "\n".join(guests_lines)
 
-    # ✅ R$ 50,00 por ingresso
+    # ✅ R$ 50,00 por ingresso (ENV)
     unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
     total_people = 1 + len(guests_lines)
     total_cents = unit_price_cents * total_people
@@ -126,40 +126,8 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # Anti-duplicidade (CPF + show + evento)
-        existing_purchase = s.scalar(
-            select(Purchase)
-            .where(
-                Purchase.event_id == ev.id,
-                Purchase.show_name == show_name,
-                Purchase.buyer_cpf_digits == cpf_digits,
-            )
-            .order_by(Purchase.id.desc())
-        )
+        # ✅ SEM anti-duplicidade: sempre cria nova compra, mesmo CPF
 
-        if existing_purchase:
-            existing_payment = s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == existing_purchase.id)
-                .order_by(Payment.id.desc())
-            )
-
-            # pago -> ingressos
-            if (existing_purchase.status or "").lower() == "paid" or (
-                existing_payment and (existing_payment.status or "").lower() == "paid"
-            ):
-                return redirect(url_for("tickets.purchase_public", token=existing_purchase.token))
-
-            # pendente -> reaproveita se mesma lista e não expirou
-            if existing_payment and _is_open_payment(existing_payment) and not _is_expired_payment(existing_payment):
-                same_guests = (existing_purchase.guests_text or "").strip() == guests_text.strip()
-                if same_guests:
-                    if existing_payment.provider == "pagbank":
-                        return redirect(url_for("purchase.pay_pix", payment_id=existing_payment.id))
-                    if existing_payment.provider == "manual_pix":
-                        return redirect(url_for("purchase.pay_manual", token=existing_purchase.token))
-
-        # cria nova compra
         purchase = Purchase(
             event_id=ev.id,
             token=purchase_token,
