@@ -1,7 +1,6 @@
 # routes/tickets.py
 from flask import Blueprint, render_template, abort, redirect, url_for
-
-from sqlalchemy import select
+from sqlalchemy import select, desc
 import os
 from db import db
 from models import Purchase, Ticket, Payment

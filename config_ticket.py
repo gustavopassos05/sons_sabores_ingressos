@@ -27,7 +27,7 @@ NAMES_Y = 500         # comprador + acompanhantes
 # ---------- QR CODE ----------
 QR_SIZE_PX = 360        # já está ótimo para 1080x1920
 QR_Y_FACTOR = 0.74      # centro inferior
-QR_Y_OFFSET = -120        # ajuste fino (use depois se quiser)
+QR_Y_OFFSET = -200        # ajuste fino (use depois se quiser)
 
 # ---------- CORES ----------
 TEXT_COLOR = (0, 0, 0, 255)
