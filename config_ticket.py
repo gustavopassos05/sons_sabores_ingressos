@@ -25,9 +25,9 @@ SHOW_Y = 380        # nome do show
 NAMES_Y = 500         # comprador + acompanhantes
 
 # ---------- QR CODE ----------
-QR_SIZE_PX = 360      # tamanho do QR colado no ingresso
-QR_Y_FACTOR = 0.62    # posição vertical relativa (0–1)
-QR_Y_OFFSET = 0       # ajuste fino em px (+/-)
+QR_SIZE_PX = 360        # já está ótimo para 1080x1920
+QR_Y_FACTOR = 0.74      # centro inferior
+QR_Y_OFFSET = 0         # ajuste fino (use depois se quiser)
 
 # ---------- CORES ----------
 TEXT_COLOR = (0, 0, 0, 255)

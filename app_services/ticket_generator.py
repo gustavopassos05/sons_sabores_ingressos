@@ -4,7 +4,7 @@ import unicodedata
 from io import BytesIO
 from pathlib import Path
 from typing import Tuple
-
+from config_ticket import QR_Y_FACTOR, QR_Y_OFFSET, QR_SIZE_PX
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 
@@ -20,11 +20,9 @@ def slug_filename(texto: str) -> str:
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
-
-def make_qr_image(url: str, size_px: int = 360) -> Image.Image:
+def make_qr_image(url: str, size_px: int = QR_SIZE_PX) -> Image.Image:
     img = qrcode.make(url).convert("RGBA")
     return img.resize((size_px, size_px))
-
 
 def generate_single_ticket_png(
     *,
@@ -82,16 +80,24 @@ def generate_single_ticket_png(
     base_img.save(png_path)
     return png_path
 
-
 def paste_qr_on_png(png_path: Path, qr_img: Image.Image, *, pos=None, margin=40) -> None:
     img = Image.open(png_path).convert("RGBA")
     W, H = img.size
     qW, qH = qr_img.size
 
     if pos is None:
-        x = max(0, W - qW - margin)
-        y = margin
+        # X: centro horizontal
+        x = (W - qW) // 2
+
+        # Y: posição relativa inferior
+        y = int(H * float(QR_Y_FACTOR)) + int(QR_Y_OFFSET)
+
+        # trava para não sair do ticket
+        y = max(margin, min(H - qH - margin, y))
+
         pos = (x, y)
 
     img.paste(qr_img, pos, qr_img)
     img.save(png_path)
+
+
