@@ -1,58 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="bg-white rounded-2xl shadow p-5 text-center">
+<div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6 text-center">
 
-  <h2 class="text-2xl font-semibold">Sons & Sabores</h2>
-  <p class="text-sm text-zinc-500">{{ ticket.show_name }}</p>
+  {% if is_valid %}
+    <div class="p-3 rounded-xl bg-green-50 border border-green-200 text-green-900 mb-4">
+      <div class="text-xl font-semibold">Ingresso válido ✅</div>
+      <div class="text-sm text-green-900/80">Pagamento confirmado</div>
+    </div>
+  {% else %}
+    <div class="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 mb-4">
+      <div class="text-xl font-semibold">Ingresso não validado ⚠️</div>
+      <div class="text-sm text-red-900/80">Pagamento não confirmado ou ingresso inválido</div>
+    </div>
+  {% endif %}
 
-  <div class="mt-2 text-xs inline-block rounded-full bg-zinc-100 px-3 py-1 text-zinc-600">
-    🎟️ Ingresso individual
+  <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
+  <p class="text-sm text-zinc-500 mb-4">{{ ticket.show_name }}</p>
+
+  <div class="rounded-xl border p-4 text-left text-sm text-zinc-700 space-y-2">
+    <div><span class="font-semibold">Nome:</span> {{ ticket.person_name }}</div>
+    <div><span class="font-semibold">Tipo:</span> {{ 'Comprador' if ticket.person_type=='buyer' else 'Acompanhante' }}</div>
+    <div><span class="font-semibold">Status do ticket:</span> {{ ticket.status }}</div>
+    <div class="text-xs text-zinc-500 break-all"><span class="font-semibold">Token:</span> {{ ticket.token }}</div>
   </div>
 
-  <p class="mt-3 text-sm text-zinc-500">
-    Apresente este QR Code na entrada
+  <p class="text-xs text-zinc-500 mt-4">
+    (Esta página é apenas para validação. Os ingressos são enviados por WhatsApp/E-mail.)
   </p>
-
-  <div class="mt-5 flex justify-center">
-    <div class="bg-white p-3 rounded-2xl shadow">
-      <img
-        src="{{ url_for('ticket_qr_png', token=ticket.token) }}"
-        alt="QR Code do ingresso"
-        class="w-[300px] h-[300px] md:w-[360px] md:h-[360px]"
-      />
-    </div>
-  </div>
-
-  <div class="mt-5 text-sm">
-    <div class="font-semibold text-lg">
-      {{ ticket.person_name }}
-    </div>
-
-    {% if ticket.person_type == "buyer" %}
-      <div class="text-zinc-500 text-xs">
-        Comprador
-      </div>
-    {% else %}
-      <div class="text-zinc-500 text-xs">
-        Acompanhante
-      </div>
-    {% endif %}
-  </div>
-
-  <div class="mt-6 grid gap-2">
-    <a
-      class="rounded-xl border p-3 hover:bg-zinc-50"
-      href="{{ url_for('ticket_png', token=ticket.token) }}?v=1"
-    >
-      Baixar ingresso (PNG)
-    </a>
-
-    <a class="rounded-xl border p-3 hover:bg-zinc-50"
-      href="{{ url_for('ticket_pdf', token=ticket.token) }}"
-    >
-      Baixar ingresso (PDF)
-    </a>
-  </div>
 
 </div>
 {% endblock %}
