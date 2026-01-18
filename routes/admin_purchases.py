@@ -152,3 +152,81 @@ def admin_send_purchase_email(purchase_id: int):
         flash(f"Falha ao enviar e-mail: {e}", "error")
 
     return redirect(url_for("admin_purchases.admin_purchases_table"))
+
+@bp_admin_purchases.post("/admin/purchases/send-email-buyer/<int:purchase_id>")
+@admin_required
+def admin_send_purchase_email_buyer(purchase_id: int):
+    # Busca compra/pagamento/tickets
+    with db() as s:
+        purchase = s.get(Purchase, purchase_id)
+        if not purchase:
+            abort(404)
+
+        to_email = (purchase.buyer_email or "").strip()
+        if not to_email or "@" not in to_email:
+            flash("Esta compra não tem e-mail válido do comprador.", "error")
+            return redirect(url_for("admin_purchases.admin_purchases_table"))
+
+        payment_paid = s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
+            .order_by(desc(Payment.id))
+        )
+        payment = payment_paid or s.scalar(
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(desc(Payment.id))
+        )
+
+        tickets = list(
+            s.scalars(select(Ticket).where(Ticket.purchase_id == purchase.id).order_by(Ticket.id.asc()))
+        )
+
+    pdf_all_url = (payment.tickets_pdf_url or "") if payment else ""
+    zip_url = (payment.tickets_zip_url or "") if payment else ""
+
+    ticket_rows = [{"name": t.person_name, "pdf": t.pdf_path or "", "png": t.png_path or ""} for t in tickets]
+
+    subject, text, html = build_tickets_email(
+        buyer_name=purchase.buyer_name or "Cliente",
+        show_name=purchase.show_name or "Sons & Sabores",
+        total_brl=((payment.amount_cents or 0) / 100) if payment else 0.0,
+        token=purchase.token,
+        ticket_qty=len(tickets),
+        pdf_all_url=pdf_all_url,
+        zip_url=zip_url,
+        tickets=ticket_rows,
+    )
+
+    try:
+        send_email(to_email=to_email, subject=subject, body_text=text, body_html=html)
+
+        # marca status enviado
+        with db() as s:
+            pay_db = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(desc(Payment.id))
+            )
+            if pay_db:
+                pay_db.tickets_email_sent_at = datetime.utcnow()
+                pay_db.tickets_email_sent_to = to_email
+                pay_db.tickets_email_last_error = None
+                s.add(pay_db)
+
+        flash("E-mail enviado para o comprador ✅", "success")
+
+    except Exception as e:
+        with db() as s:
+            pay_db = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(desc(Payment.id))
+            )
+            if pay_db:
+                pay_db.tickets_email_last_error = str(e)[:2000]
+                s.add(pay_db)
+
+        flash(f"Falha ao enviar e-mail: {e}", "error")
+
+    return redirect(url_for("admin_purchases.admin_purchases_table"))

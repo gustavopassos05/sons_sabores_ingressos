@@ -97,19 +97,16 @@
                   onclick="copyText('{{ zip_all or pdf_all or '' }}')">
             Copiar link
           </button>
-          <form method="post"
-                action="{{ url_for('admin_purchases.admin_send_purchase_email', purchase_id=p.id) }}"
-                class="flex flex-col gap-2">
+          {% if p.buyer_email %}
+            <form method="post" action="{{ url_for('admin_purchases.admin_send_purchase_email_buyer', purchase_id=p.id) }}">
+              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                Enviar para email do comprador
+              </button>
+            </form>
+          {% else %}
+            <div class="text-xs text-zinc-400">Sem e-mail do comprador</div>
+          {% endif %}
 
-            <input type="email" name="to_email"
-                   value="{{ p.buyer_email or '' }}"
-                   placeholder="email@..."
-                   class="rounded-xl border px-3 py-2 text-xs" required>
-
-            <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50">
-              Enviar por e-mail
-            </button>
-          </form>
 
         </div>
 
