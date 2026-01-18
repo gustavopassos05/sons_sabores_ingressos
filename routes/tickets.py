@@ -1,5 +1,6 @@
 # routes/tickets.py
-from flask import Blueprint, render_template, abort
+from flask import Blueprint, render_template, abort, redirect, url_for
+
 from sqlalchemy import select
 import os
 from db import db
@@ -17,58 +18,6 @@ from flask import current_app
 
 @bp_tickets.get("/purchase/<token>")
 def purchase_public(token: str):
-    finalize_fn = current_app.extensions.get("finalize_purchase")
-
-    with db() as s:
-        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-        if not purchase:
-            abort(404)
-
-        # ✅ 1) payment pago (se existir)
-        payment_paid = s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-            .order_by(Payment.id.desc())
-        )
-
-        # ✅ 2) senão, pega o último (pending/failed)
-        payment = payment_paid or s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id)
-            .order_by(Payment.id.desc())
-        )
-
-        tickets = list(
-            s.scalars(
-                select(Ticket)
-                .where(Ticket.purchase_id == purchase.id)
-                .order_by(Ticket.id.asc())
-            )
-        )
-
-        # ✅ se já está pago, mas ainda não gerou links, tenta finalizar (idempotente)
-        should_finalize = (
-            payment
-            and (payment.status or "").lower() == "paid"
-            and not payment.tickets_pdf_url
-            and callable(finalize_fn)
-        )
-
-    # ⚠️ chama fora do "with db()" pra não misturar sessão
-    if should_finalize:
-        try:
-            finalize_fn(purchase.id)
-        except Exception:
-            # não quebra a página; só deixa "gerando..."
-            pass
-
-        # recarrega dados após tentar finalizar
-        with db() as s:
-            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-            tickets = list(s.scalars(select(Ticket).where(Ticket.purchase_id == purchase.id).order_by(Ticket.id.asc())))
-            payment = s.scalar(select(Payment).where(Payment.purchase_id == purchase.id, Payment.status == "paid").order_by(Payment.id.desc())) \
-                      or s.scalar(select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc()))
-
     return redirect(url_for("purchase.purchase_status", token=token))
 
 @bp_tickets.get("/ticket/<token>")
