@@ -132,6 +132,23 @@
               <div class="text-xs text-zinc-400">Sem e-mail do comprador</div>
             {% endif %}
 
+            <form method="post"
+                  action="{{ url_for('admin_delete.delete_ticket', ticket_id=t.id) }}"
+                  onsubmit="return confirm('Excluir este ingresso (apenas esta pessoa)?');">
+              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                Excluir ingresso
+              </button>
+            </form>
+
+            {% if p and p.token %}
+            <form method="post"
+                  action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
+                  onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
+              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                Excluir compra
+              </button>
+            </form>
+            {% endif %}
 
           </div>
         </div>

@@ -20,10 +20,23 @@ def slug_filename(texto: str) -> str:
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
-def make_qr_image(url: str, size_px: int = QR_SIZE_PX) -> Image.Image:
-    img = qrcode.make(url).convert("RGBA")
-    return img.resize((size_px, size_px))
+def make_qr_image(data: str, size_px: int = 360) -> Image.Image:
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=ERROR_CORRECT_Q,  # mais robusto
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
 
+    img = qr.make_image(
+        fill_color="black",
+        back_color=None,   # 👈 FUNDO TRANSPARENTE
+    ).convert("RGBA")
+
+    img = img.resize((size_px, size_px), Image.LANCZOS)
+    return img
 def generate_single_ticket_png(
     *,
     storage_dir: Path,

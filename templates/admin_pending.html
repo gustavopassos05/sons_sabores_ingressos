@@ -58,6 +58,14 @@
           </button>
         </div>
       </div>
+      <form method="post"
+            action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
+            onsubmit="return confirm('Excluir esta compra? Isso apaga pagamentos e ingressos.');">
+        <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+          Excluir compra
+        </button>
+      </form>
+
     {% endfor %}
 
     {% if rows|length == 0 %}
