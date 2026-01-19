@@ -5,22 +5,19 @@
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
       <h2 class="text-2xl font-semibold">Admin · Ingressos</h2>
-      <p class="text-sm text-zinc-500">Tabela restrita para confirmar pagamento e enviar ingressos.</p>
+      <p class="text-sm text-zinc-500">Tabela restrita para baixar e enviar ingressos.</p>
     </div>
 
     <form method="get" class="flex gap-2">
       <input type="text" name="q" value="{{ q }}"
              placeholder="Buscar por comprador, CPF, show, pessoa, token…"
              class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
-      {% if admin_key %}<input type="hidden" name="key" value="{{ admin_key }}"/>{% endif %}
       <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
     </form>
   </div>
 
-  <!-- ✅ Sem barra de rolagem: cards no mobile, tabela no desktop -->
   <div class="rounded-xl border bg-white divide-y">
 
-    <!-- Cabeçalho (apenas desktop) -->
     <div class="hidden md:grid grid-cols-6 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
       <div>Show</div>
       <div>Compra</div>
@@ -43,21 +40,19 @@
 
       <div class="p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-sm">
 
-        <!-- Show -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Show</div>
           <div class="font-medium">{{ t.show_name }}</div>
         </div>
 
-        <!-- Compra -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Compra</div>
           <div class="font-medium">{{ buyer }}</div>
           {% if cpf %}<div class="text-xs text-zinc-500">CPF: {{ cpf }}</div>{% endif %}
           {% if purchase_token %}<div class="text-xs text-zinc-400 break-all">Token: {{ purchase_token }}</div>{% endif %}
+          {% if p and p.buyer_email %}<div class="text-xs text-zinc-500 break-all">Email: {{ p.buyer_email }}</div>{% endif %}
         </div>
 
-        <!-- Pessoa -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoa</div>
           <div class="font-semibold">{{ t.person_name }}</div>
@@ -66,7 +61,6 @@
           </div>
         </div>
 
-        <!-- Pagamento -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Pagamento</div>
           <div class="flex items-center gap-2">
@@ -81,7 +75,6 @@
           {% if pay_provider %}<div class="text-xs text-zinc-500 mt-1">{{ pay_provider }}</div>{% endif %}
         </div>
 
-        <!-- Links -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Links</div>
           <div class="flex flex-col gap-1">
@@ -98,7 +91,6 @@
           </div>
         </div>
 
-        <!-- Ações -->
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Ações</div>
           <div class="flex flex-col gap-2">
@@ -122,7 +114,8 @@
                     onclick="sendWhats('{{ buyer|e }}','{{ t.show_name|e }}','{{ t.person_name|e }}','{{ t.pdf_path or t.png_path or '' }}')">
               WhatsApp
             </button>
-            {% if p.buyer_email %}
+
+            {% if p and p.buyer_email %}
               <form method="post" action="{{ url_for('admin_purchases.admin_send_purchase_email_buyer', purchase_id=p.id) }}">
                 <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
                   Enviar para email do comprador
@@ -141,13 +134,13 @@
             </form>
 
             {% if p and p.token %}
-            <form method="post"
-                  action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
-                  onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
-              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-                Excluir compra
-              </button>
-            </form>
+              <form method="post"
+                    action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
+                    onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
+                <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                  Excluir compra
+                </button>
+              </form>
             {% endif %}
 
           </div>
@@ -165,8 +158,6 @@
 </div>
 
 <script>
-  const ADMIN_KEY = "{{ admin_key }}";
-
   function copyText(txt) {
     if (!txt) { alert("Sem link ainda."); return; }
     navigator.clipboard.writeText(txt);
@@ -188,8 +179,8 @@
   async function confirmPaid(purchaseToken) {
     if (!confirm("Confirmar pagamento e gerar ingressos?")) return;
 
-    const url = "/admin/mark-paid/" + purchaseToken + "?key=" + encodeURIComponent(ADMIN_KEY);
-    const res = await fetch(url, { method: "POST" });
+    // ✅ sem ?key — você já está logada por sessão
+    const res = await fetch("/admin/mark-paid/" + purchaseToken, { method: "POST" });
 
     if (res.ok) {
       alert("Pagamento confirmado ✅ Ingressos gerados/FTP em andamento.");

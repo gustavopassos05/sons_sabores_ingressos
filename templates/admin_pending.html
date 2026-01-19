@@ -12,7 +12,6 @@
       <input type="text" name="q" value="{{ q }}"
              placeholder="Buscar por nome, CPF, show, token…"
              class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
-      {% if admin_key %}<input type="hidden" name="key" value="{{ admin_key }}"/>{% endif %}
       <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
     </form>
   </div>
@@ -21,7 +20,8 @@
     {% for row in rows %}
       {% set p = row.purchase %}
       {% set pay = row.payment %}
-      <div class="p-4 grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
+
+      <div class="p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-sm">
 
         <div>
           <div class="text-xs text-zinc-400">Show</div>
@@ -32,11 +32,18 @@
           <div class="text-xs text-zinc-400">Comprador</div>
           <div class="font-medium">{{ p.buyer_name }}</div>
           <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf }}</div>
+          {% if p.buyer_email %}<div class="text-xs text-zinc-500 break-all">Email: {{ p.buyer_email }}</div>{% endif %}
+          {% if p.buyer_phone %}<div class="text-xs text-zinc-500 break-all">Tel: {{ p.buyer_phone }}</div>{% endif %}
         </div>
 
         <div>
           <div class="text-xs text-zinc-400">Token</div>
           <div class="text-xs break-all">{{ p.token }}</div>
+          {% if p.created_at %}
+            <div class="text-xs text-zinc-500 mt-1">
+              {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+          {% endif %}
         </div>
 
         <div>
@@ -52,20 +59,22 @@
             Abrir página do Pix
           </a>
 
-          <button class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+          <button type="button"
+                  class="rounded-xl bg-black text-white px-3 py-2 text-xs"
                   onclick="confirmPaid('{{ p.token }}')">
             Confirmar pagamento
           </button>
-        </div>
-      </div>
-      <form method="post"
-            action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
-            onsubmit="return confirm('Excluir esta compra? Isso apaga pagamentos e ingressos.');">
-        <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-          Excluir compra
-        </button>
-      </form>
 
+          <form method="post"
+                action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
+                onsubmit="return confirm('Excluir esta compra? Isso apaga pagamentos e ingressos.');">
+            <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+              Excluir compra
+            </button>
+          </form>
+        </div>
+
+      </div>
     {% endfor %}
 
     {% if rows|length == 0 %}
@@ -76,13 +85,11 @@
 </div>
 
 <script>
-  const ADMIN_KEY = "{{ admin_key }}";
-
   async function confirmPaid(purchaseToken) {
     if (!confirm("Confirmar pagamento e gerar ingressos?")) return;
 
-    const url = "/admin/mark-paid/" + purchaseToken + "?key=" + encodeURIComponent(ADMIN_KEY);
-    const res = await fetch(url, { method: "POST" });
+    // ✅ sem ?key — você já está logada por sessão
+    const res = await fetch("/admin/mark-paid/" + purchaseToken, { method: "POST" });
 
     if (res.ok) {
       alert("Pagamento confirmado ✅ Ingressos gerados/FTP em andamento.");
