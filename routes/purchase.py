@@ -6,7 +6,7 @@ from pathlib import Path
 from werkzeug.utils import secure_filename
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
-from sqlalchemy import select
+from sqlalchemy import select, desc
 
 from db import db
 from models import Event, Purchase, Payment, Ticket

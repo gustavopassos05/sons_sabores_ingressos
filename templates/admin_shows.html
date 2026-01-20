@@ -9,7 +9,14 @@
     <form method="post" action="{{ url_for('admin_shows.shows_create') }}" class="grid grid-cols-1 md:grid-cols-4 gap-2">
       <input name="name" class="rounded-xl border p-3 text-sm" placeholder="Nome do show" required>
       <input name="date_text" class="rounded-xl border p-3 text-sm" placeholder="Data/hora (texto)" required>
-      <input name="price_cents" class="rounded-xl border p-3 text-sm" placeholder="Preço (centavos) — opcional">
+      <input
+        type="text"
+        name="price_brl"
+        inputmode="decimal"
+        placeholder="50,00 (opcional)"
+        class="rounded-xl border p-3 text-sm"
+      />
+
       <button class="rounded-xl bg-black text-white px-4 py-3 text-sm">Criar</button>
     </form>
     <div class="text-xs text-zinc-500 mt-2">Preço em centavos: 5000 = R$ 50,00. Pode deixar vazio.</div>
@@ -31,7 +38,14 @@
 
         <div>
           <div class="text-xs text-zinc-400">Preço</div>
-          <input name="price_cents" value="{{ s.price_cents or '' }}" class="w-full rounded-xl border p-2 text-sm" placeholder="(vazio)">
+          <input
+            type="text"
+            name="price_brl"
+            inputmode="decimal"
+            placeholder="50,00"
+            class="w-28 rounded-xl border p-2 text-xs"
+          />
+
         </div>
 
         <div class="flex flex-col gap-2">
