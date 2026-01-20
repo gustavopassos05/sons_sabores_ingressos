@@ -4,38 +4,72 @@
 <div class="bg-white rounded-2xl shadow p-5">
   <h2 class="text-xl font-semibold mb-4">Configurações</h2>
 
-  <form method="post" class="space-y-4">
+  <form method="post" class="space-y-6">
 
-    <div>
-      <label class="text-sm text-zinc-600">Chave Pix (manual)</label>
-      <textarea name="pix_key" rows="3"
-                class="w-full rounded-xl border p-3 text-sm"
-                placeholder="Cole aqui sua chave Pix (email/telefone/cnpj/chave aleatória)">{{ pix_key }}</textarea>
-      <p class="text-xs text-zinc-500 mt-1">
-        Usada na página de pagamento manual.
-      </p>
+    <!-- PIX / WhatsApp / fallback -->
+    <div class="space-y-4">
+      <div>
+        <label class="text-sm text-zinc-600">Chave Pix (manual)</label>
+        <textarea name="pix_key" rows="3"
+                  class="w-full rounded-xl border p-3 text-sm"
+                  placeholder="Cole aqui sua chave Pix">{{ pix_key }}</textarea>
+        <p class="text-xs text-zinc-500 mt-1">
+          Usada na página de pagamento manual.
+        </p>
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-600">WhatsApp (55DDDNUMERO)</label>
+        <input name="whatsapp"
+               class="w-full rounded-xl border p-3 text-sm"
+               placeholder="5531999613652"
+               value="{{ whatsapp }}" />
+        <p class="text-xs text-zinc-500 mt-1">
+          Número que receberá os comprovantes.
+        </p>
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-600">Preço padrão por ingresso (centavos)</label>
+        <input name="ticket_price_cents"
+               class="w-full rounded-xl border p-3 text-sm"
+               placeholder="5000"
+               value="{{ ticket_price_cents }}" />
+        <p class="text-xs text-zinc-500 mt-1">
+          Ex: 5000 = R$ 50,00. Serve como fallback se um show não tiver preço definido.
+        </p>
+      </div>
     </div>
 
-    <div>
-      <label class="text-sm text-zinc-600">WhatsApp (55DDDNUMERO)</label>
-      <input name="whatsapp"
-             class="w-full rounded-xl border p-3 text-sm"
-             placeholder="5531999999999"
-             value="{{ whatsapp }}" />
-      <p class="text-xs text-zinc-500 mt-1">
-        Número que receberá os comprovantes (formato internacional).
+    <!-- Preços por show -->
+    <div class="border-t pt-5">
+      <div class="text-lg font-semibold mb-1">Preços por show</div>
+      <p class="text-sm text-zinc-500 mb-4">
+        Defina o valor por ingresso para cada show (em centavos). Ex: 5000 = R$ 50,00.
       </p>
-    </div>
 
-    <div>
-      <label class="text-sm text-zinc-600">Preço por pessoa (centavos)</label>
-      <input name="ticket_price_cents"
-             class="w-full rounded-xl border p-3 text-sm"
-             placeholder="100"
-             value="{{ ticket_price_cents }}" />
-      <p class="text-xs text-zinc-500 mt-1">
-        Ex: 100 = R$ 1,00 / 5000 = R$ 50,00
-      </p>
+      <div class="space-y-3">
+        {% for item in show_fields %}
+          {% set name = item.name %}
+          {% set slug = item.slug %}
+          {% set current = show_prices.get(name, "") %}
+
+          <div class="rounded-2xl border p-4">
+            <div class="font-medium">{{ name }}</div>
+
+            <input
+              name="price_{{ slug }}"
+              value="{{ current }}"
+              placeholder="5000"
+              class="mt-2 w-full rounded-xl border p-3 text-sm"
+            />
+
+            <p class="text-xs text-zinc-500 mt-1">
+              Deixe vazio para usar o preço padrão.
+            </p>
+          </div>
+        {% endfor %}
+      </div>
     </div>
 
     <div class="pt-2 flex gap-2">

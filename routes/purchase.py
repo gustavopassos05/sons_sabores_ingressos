@@ -12,9 +12,22 @@ from db import db
 from models import Event, Purchase, Payment, Ticket
 from pagbank import create_pix_order  # Orders API (PIX)
 from app_services.email_service import send_email
+from app_services.ticket_generator import slug_filename
+from models import AdminSetting
 
 bp_purchase = Blueprint("purchase", __name__)
 
+def _get_show_price_cents(s, show_name: str) -> int:
+    # fallback geral
+    fallback = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+
+    k = f"PRICE_{slug_filename(show_name)}"
+    row = s.scalar(select(AdminSetting).where(AdminSetting.key == k))
+    try:
+        v = int((row.value or "").strip()) if row else fallback
+        return v if v > 0 else fallback
+    except Exception:
+        return fallback
 
 def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
@@ -60,22 +73,21 @@ def _parse_guests(guests_text: str) -> list[str]:
 
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
+    shows = current_app.config.get("SHOWS", [])
     with db() as s:
-        ev = s.scalar(select(Event).where(Event.slug == event_slug))
-        if not ev:
-            abort(404)
+        prices = {}
+        for name in shows:
+            prices[name] = _get_show_price_cents(s, name)
 
-    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))  # fallback
     return render_template(
         "buy.html",
         event=ev,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
         form={},
         ticket_price_cents=ticket_price_cents,
+        show_prices_map=prices,
     )
-
-
-
 
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
@@ -111,8 +123,8 @@ def buy_post(event_slug: str):
     guests_lines = _parse_guests(guests_raw)
     guests_text = "\n".join(guests_lines)
 
-    # ✅ R$ 50,00 por ingresso (ENV)
-    unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    # preço por show vindo do banco (AdminSetting)
+    unit_price_cents = _get_show_price_cents(s, show_name)
     total_people = 1 + len(guests_lines)
     total_cents = unit_price_cents * total_people
 
@@ -140,6 +152,9 @@ def buy_post(event_slug: str):
             guests_text=guests_text,
             status="pending_payment",
             created_at=datetime.utcnow(),
+            ticket_qty=total_people,
+            ticket_unit_price_cents=unit_price_cents,
+
         )
         s.add(purchase)
         s.commit()
@@ -463,3 +478,13 @@ def purchase_status(token: str):
         payment=payment,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+
+def _get_show_price_cents(s, show_name: str) -> int:
+    fallback = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    k = f"PRICE_{slug_filename(show_name)}"
+    row = s.scalar(select(AdminSetting).where(AdminSetting.key == k))
+    try:
+        v = int((row.value or "").strip()) if row else fallback
+        return v if v > 0 else fallback
+    except Exception:
+        return fallback

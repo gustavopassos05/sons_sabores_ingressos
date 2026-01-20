@@ -9,7 +9,7 @@
 
     <div>
       <label class="text-sm text-zinc-600">Show</label>
-      <select name="show_name" class="w-full rounded-xl border p-3 text-sm" required>
+      <select id="show_name" name="show_name" class="w-full rounded-xl border p-3 text-sm" required>
         <option value="">Selecione…</option>
         {% for s in (config.SHOWS if config and config.SHOWS else []) %}
           <option value="{{ s }}">{{ s }}</option>
@@ -22,9 +22,9 @@
         <label class="text-sm text-zinc-600">Nome do comprador</label>
         <input name="buyer_name" class="w-full rounded-xl border p-3 text-sm" required />
       </div>
+
       <div>
         <label class="text-sm text-zinc-600">CPF do comprador</label>
-
         <input
           id="cpf"
           name="buyer_cpf"
@@ -35,9 +35,7 @@
           required
         />
         <p id="cpf_hint" class="text-xs text-zinc-500 mt-1"></p>
-
       </div>
-
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -45,6 +43,7 @@
         <label class="text-sm text-zinc-600">E-mail</label>
         <input name="buyer_email" type="email" class="w-full rounded-xl border p-3 text-sm" />
       </div>
+
       <div>
         <label class="text-sm text-zinc-600">Telefone</label>
         <input
@@ -56,9 +55,7 @@
           class="w-full rounded-xl border p-3 text-sm"
         />
         <p id="phone_hint" class="text-xs text-zinc-500 mt-1"></p>
-
       </div>
-
     </div>
 
     <div>
@@ -71,7 +68,7 @@
       </p>
     </div>
 
-    <!-- ✅ PREVIEW DO TOTAL (dinâmico do ENV) -->
+    <!-- ✅ PREVIEW DO TOTAL (por show) -->
     <div class="rounded-2xl border p-4 bg-zinc-50">
       <div class="text-sm text-zinc-700 space-y-1">
         <div><span class="font-semibold">Valor por ingresso:</span> <span id="unit_price_lbl">—</span></div>
@@ -93,21 +90,19 @@
 </div>
 
 <script>
-  // ✅ vindo do backend (ENV TICKET_PRICE_CENTS)
-  const ticketPriceCents = {{ ticket_price_cents|default(5000) }};
+  // ✅ fallback geral (ENV)
+  const fallbackPriceCents = {{ ticket_price_cents|default(5000) }};
+  // ✅ preços por show vindos do backend
+  const showPrices = {{ show_prices_map|default({})|tojson }};
 
   function parseGuests(raw) {
     raw = (raw || "").trim();
     if (!raw) return [];
-
     const lines = raw.split(/\r?\n/);
     let names = [];
-
     for (const line of lines) {
       const cleaned = (line || "").trim();
       if (!cleaned) continue;
-
-      // separa por ; e ,
       const parts = cleaned.replace(/;/g, ",").split(",");
       for (const p of parts) {
         const name = (p || "").trim();
@@ -122,65 +117,60 @@
     return "R$ " + v;
   }
 
+  function getSelectedPriceCents() {
+    const sel = document.getElementById("show_name");
+    const name = sel ? sel.value : "";
+    return (showPrices[name] || fallbackPriceCents);
+  }
+
   function updatePreview() {
+    const unitCents = getSelectedPriceCents();
     const guestsRaw = document.getElementById("guests_text").value;
     const guests = parseGuests(guestsRaw);
     const totalPeople = 1 + guests.length;
-    const totalCents = totalPeople * ticketPriceCents;
+    const totalCents = totalPeople * unitCents;
 
-    document.getElementById("unit_price_lbl").textContent = formatBRLFromCents(ticketPriceCents);
+    document.getElementById("unit_price_lbl").textContent = formatBRLFromCents(unitCents);
     document.getElementById("total_people_lbl").textContent = String(totalPeople);
     document.getElementById("total_price_lbl").textContent = formatBRLFromCents(totalCents);
   }
 
   document.getElementById("guests_text").addEventListener("input", updatePreview);
+  document.getElementById("show_name").addEventListener("change", updatePreview);
   updatePreview();
 </script>
-<script>
-  function onlyDigits(v) {
-    return (v || "").replace(/\D/g, "");
-  }
 
-  // CPF: 000.000.000-00
+<!-- ✅ máscara + validação CPF/telefone (seu script original) -->
+<script>
+  function onlyDigits(v) { return (v || "").replace(/\D/g, ""); }
+
   function maskCPF(value) {
     const d = onlyDigits(value).slice(0, 11);
-
     if (d.length <= 3) return d;
     if (d.length <= 6) return d.replace(/(\d{3})(\d+)/, "$1.$2");
     if (d.length <= 9) return d.replace(/(\d{3})(\d{3})(\d+)/, "$1.$2.$3");
     return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   }
 
-  // Telefone: (31) 9 9999-9999 ou (31) 3333-4444
   function maskPhone(value) {
     const d = onlyDigits(value).slice(0, 11);
-
     if (d.length <= 2) return d;
     if (d.length <= 6) return d.replace(/(\d{2})(\d+)/, "($1) $2");
-
-    // celular (11 dígitos)
-    if (d.length === 11) {
-      return d.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2 $3-$4");
-    }
-
-    // fixo (10 dígitos)
+    if (d.length === 11) return d.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2 $3-$4");
     return d.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
   }
 
-  // ✅ valida CPF (dígitos verificadores)
   function isValidCPF(cpfDigits) {
     const cpf = onlyDigits(cpfDigits);
     if (cpf.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(cpf)) return false; // todos iguais
+    if (/^(\d)\1{10}$/.test(cpf)) return false;
 
-    // calcula digito 1
     let sum = 0;
     for (let i = 0; i < 9; i++) sum += parseInt(cpf[i], 10) * (10 - i);
     let d1 = (sum * 10) % 11;
     if (d1 === 10) d1 = 0;
     if (d1 !== parseInt(cpf[9], 10)) return false;
 
-    // calcula digito 2
     sum = 0;
     for (let i = 0; i < 10; i++) sum += parseInt(cpf[i], 10) * (11 - i);
     let d2 = (sum * 10) % 11;
@@ -193,14 +183,11 @@
   function setFieldState(input, hintEl, ok, msg) {
     if (!input) return;
     input.classList.remove("border-red-400", "border-green-400", "ring-2", "ring-red-200", "ring-green-200");
-
     if (ok === null) {
-      // neutro
       if (hintEl) hintEl.textContent = msg || "";
       if (hintEl) hintEl.className = "text-xs text-zinc-500 mt-1";
       return;
     }
-
     if (ok) {
       input.classList.add("border-green-400", "ring-2", "ring-green-200");
       if (hintEl) hintEl.textContent = msg || "Ok ✅";
@@ -217,26 +204,18 @@
   const cpfHint = document.getElementById("cpf_hint");
   const phoneHint = document.getElementById("phone_hint");
 
-  // CPF: máscara + validação progressiva
   if (cpfInput) {
     cpfInput.addEventListener("input", () => {
       cpfInput.value = maskCPF(cpfInput.value);
-
       const d = onlyDigits(cpfInput.value);
-      if (d.length === 0) {
-        setFieldState(cpfInput, cpfHint, null, "");
-        return;
-      }
-      if (d.length < 11) {
-        setFieldState(cpfInput, cpfHint, null, "Digite os 11 dígitos do CPF.");
-        return;
-      }
+
+      if (d.length === 0) return setFieldState(cpfInput, cpfHint, null, "");
+      if (d.length < 11) return setFieldState(cpfInput, cpfHint, null, "Digite os 11 dígitos do CPF.");
 
       const ok = isValidCPF(d);
       setFieldState(cpfInput, cpfHint, ok, ok ? "CPF válido ✅" : "CPF inválido. Confira os números.");
     });
 
-    // valida no blur também
     cpfInput.addEventListener("blur", () => {
       const d = onlyDigits(cpfInput.value);
       if (d.length === 11) {
@@ -246,20 +225,14 @@
     });
   }
 
-  // Telefone: máscara + validação simples (mín 10 dígitos se preenchido)
   if (phoneInput) {
     phoneInput.addEventListener("input", () => {
       phoneInput.value = maskPhone(phoneInput.value);
-
       const d = onlyDigits(phoneInput.value);
-      if (d.length === 0) {
-        setFieldState(phoneInput, phoneHint, null, "");
-        return;
-      }
-      if (d.length < 10) {
-        setFieldState(phoneInput, phoneHint, false, "Telefone incompleto (mín. 10 dígitos com DDD).");
-        return;
-      }
+
+      if (d.length === 0) return setFieldState(phoneInput, phoneHint, null, "");
+      if (d.length < 10) return setFieldState(phoneInput, phoneHint, false, "Telefone incompleto (mín. 10 dígitos com DDD).");
+
       setFieldState(phoneInput, phoneHint, true, "Telefone ok ✅");
     });
 

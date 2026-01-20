@@ -31,6 +31,9 @@ class Purchase(Base):
     buyer_phone: Mapped[str] = mapped_column(String(40), nullable=True)
     buyer_cpf: Mapped[str] = mapped_column(String(30), nullable=True)
     buyer_cpf_digits: Mapped[str] = mapped_column(String(14), nullable=True)  # ✅ ADD AQUI
+    ticket_qty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    ticket_unit_price_cents: Mapped[int] = mapped_column(Integer, default=5000, nullable=False)
+
 
 
     guests_text: Mapped[str] = mapped_column(Text, nullable=True)

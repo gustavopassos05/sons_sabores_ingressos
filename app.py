@@ -71,7 +71,7 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_auth)
     app.register_blueprint(bp_admin_settings)
     app.register_blueprint(bp_admin_purchases)
-    app.register_blueprint(bp_admin_delete)  
+    app.register_blueprint(bp_admin_delete)
 
 
     # ✅ pluga o finalizador (webhook usa isso)
