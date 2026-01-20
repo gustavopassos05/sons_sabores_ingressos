@@ -73,13 +73,20 @@ def _parse_guests(guests_text: str) -> list[str]:
 
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
-    shows = current_app.config.get("SHOWS", [])
+    # carrega evento
     with db() as s:
+        ev = s.scalar(select(Event).where(Event.slug == event_slug))
+        if not ev:
+            abort(404)
+
+        # preços por show (AdminSetting) + fallback ENV
+        shows = current_app.config.get("SHOWS", [])
         prices = {}
         for name in shows:
             prices[name] = _get_show_price_cents(s, name)
 
-    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))  # fallback
+    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+
     return render_template(
         "buy.html",
         event=ev,
