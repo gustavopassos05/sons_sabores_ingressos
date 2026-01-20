@@ -14,6 +14,7 @@ from pagbank import create_pix_order  # Orders API (PIX)
 from app_services.email_service import send_email
 from app_services.ticket_generator import slug_filename
 from models import AdminSetting
+from models import Show
 
 bp_purchase = Blueprint("purchase", __name__)
 
@@ -70,31 +71,36 @@ def _parse_guests(guests_text: str) -> list[str]:
         tmp.extend(parts)
     return tmp
 
-
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
-    # carrega evento
+    fallback_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+
     with db() as s:
         ev = s.scalar(select(Event).where(Event.slug == event_slug))
         if not ev:
             abort(404)
 
-        # preços por show (AdminSetting) + fallback ENV
-        shows = current_app.config.get("SHOWS", [])
-        prices = {}
-        for name in shows:
-            prices[name] = _get_show_price_cents(s, name)
+        shows = list(
+            s.scalars(
+                select(Show)
+                .where(Show.is_active == 1)
+                .order_by(desc(Show.id))
+            )
+        )
 
-    ticket_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    # mapa de preços por nome do show (se price_cents for NULL, usa fallback)
+    show_prices_map = {sh.name: (sh.price_cents or fallback_price_cents) for sh in shows}
 
     return render_template(
         "buy.html",
         event=ev,
+        shows=shows,  # ✅ lista de shows com name/date_text/price_cents
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
         form={},
-        ticket_price_cents=ticket_price_cents,
-        show_prices_map=prices,
+        ticket_price_cents=fallback_price_cents,  # fallback
+        show_prices_map=show_prices_map,
     )
+
 
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
@@ -216,7 +222,6 @@ def buy_post(event_slug: str):
             s.commit()
 
             return redirect(url_for("purchase.pay_manual", token=purchase.token))
-
 
 @bp_purchase.get("/pay/<int:payment_id>")
 def pay_pix(payment_id: int):

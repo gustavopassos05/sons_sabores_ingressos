@@ -11,10 +11,22 @@
       <label class="text-sm text-zinc-600">Show</label>
       <select id="show_name" name="show_name" class="w-full rounded-xl border p-3 text-sm" required>
         <option value="">Selecione…</option>
-        {% for s in (config.SHOWS if config and config.SHOWS else []) %}
-          <option value="{{ s }}">{{ s }}</option>
+
+        {# ✅ agora vem do banco #}
+        {% for sh in shows %}
+          <option value="{{ sh.name }}">
+            {{ sh.name }} — {{ sh.date_text }}
+            {% if sh.price_cents %}
+              (R$ {{ '%.2f'|format(sh.price_cents/100) }})
+            {% else %}
+              (preço a definir)
+            {% endif %}
+          </option>
         {% endfor %}
       </select>
+      <p class="text-xs text-zinc-500 mt-1">
+        Se o preço estiver vazio, será usado o preço padrão configurado.
+      </p>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -92,7 +104,7 @@
 <script>
   // ✅ fallback geral (ENV)
   const fallbackPriceCents = {{ ticket_price_cents|default(5000) }};
-  // ✅ preços por show vindos do backend
+  // ✅ preços por show vindos do backend (name -> cents)
   const showPrices = {{ show_prices_map|default({})|tojson }};
 
   function parseGuests(raw) {
@@ -140,7 +152,7 @@
   updatePreview();
 </script>
 
-<!-- ✅ máscara + validação CPF/telefone (seu script original) -->
+<!-- ✅ máscara + validação CPF/telefone -->
 <script>
   function onlyDigits(v) { return (v || "").replace(/\D/g, ""); }
 

@@ -114,3 +114,13 @@ class AdminSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String(80), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=True)
+
+class Show(Base):
+    __tablename__ = "shows"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    date_text: Mapped[str] = mapped_column(String(120), nullable=False)
+    price_cents: Mapped[int] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -1,0 +1,53 @@
+{% extends "admin_base.html" %}
+{% block admin_content %}
+
+<div class="bg-white rounded-2xl shadow p-5">
+  <h2 class="text-xl font-semibold mb-3">Shows</h2>
+
+  <div class="rounded-xl border p-4 mb-5">
+    <div class="font-semibold mb-2">Criar novo show</div>
+    <form method="post" action="{{ url_for('admin_shows.shows_create') }}" class="grid grid-cols-1 md:grid-cols-4 gap-2">
+      <input name="name" class="rounded-xl border p-3 text-sm" placeholder="Nome do show" required>
+      <input name="date_text" class="rounded-xl border p-3 text-sm" placeholder="Data/hora (texto)" required>
+      <input name="price_cents" class="rounded-xl border p-3 text-sm" placeholder="Preço (centavos) — opcional">
+      <button class="rounded-xl bg-black text-white px-4 py-3 text-sm">Criar</button>
+    </form>
+    <div class="text-xs text-zinc-500 mt-2">Preço em centavos: 5000 = R$ 50,00. Pode deixar vazio.</div>
+  </div>
+
+  <div class="rounded-xl border divide-y">
+    {% for s in shows %}
+      <form method="post" action="{{ url_for('admin_shows.shows_update', show_id=s.id) }}" class="p-4 grid grid-cols-1 md:grid-cols-6 gap-2 text-sm">
+        <div class="md:col-span-2">
+          <div class="text-xs text-zinc-400">Nome</div>
+          <input name="name" value="{{ s.name }}" class="w-full rounded-xl border p-2 text-sm">
+          <div class="text-xs text-zinc-500 break-all mt-1">slug: {{ s.slug }}</div>
+        </div>
+
+        <div class="md:col-span-2">
+          <div class="text-xs text-zinc-400">Data</div>
+          <input name="date_text" value="{{ s.date_text }}" class="w-full rounded-xl border p-2 text-sm">
+        </div>
+
+        <div>
+          <div class="text-xs text-zinc-400">Preço</div>
+          <input name="price_cents" value="{{ s.price_cents or '' }}" class="w-full rounded-xl border p-2 text-sm" placeholder="(vazio)">
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <div class="text-xs text-zinc-400">Ativo</div>
+          <select name="is_active" class="rounded-xl border p-2 text-sm">
+            <option value="1" {% if s.is_active %}selected{% endif %}>Sim</option>
+            <option value="0" {% if not s.is_active %}selected{% endif %}>Não</option>
+          </select>
+
+          <button class="rounded-xl bg-black text-white px-4 py-2 text-xs">
+            Salvar
+          </button>
+        </div>
+      </form>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

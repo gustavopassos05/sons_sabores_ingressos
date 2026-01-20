@@ -20,6 +20,7 @@ from routes.admin_auth import bp_admin_auth
 from routes.admin_settings import bp_admin_settings
 from routes.admin_purchases import bp_admin_purchases
 from routes.admin_delete import bp_admin_delete
+from routes.admin_shows import bp_admin_shows
 
 
 
@@ -72,6 +73,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_settings)
     app.register_blueprint(bp_admin_purchases)
     app.register_blueprint(bp_admin_delete)
+    app.register_blueprint(bp_admin_shows)
+
 
 
     # ✅ pluga o finalizador (webhook usa isso)
