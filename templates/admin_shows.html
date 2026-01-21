@@ -47,6 +47,14 @@
           />
 
         </div>
+        <div>
+          <div class="text-xs text-zinc-400">Ingresso?</div>
+          <select name="requires_ticket" class="rounded-xl border p-2 text-sm w-full">
+            <option value="1" {% if s.requires_ticket %}selected{% endif %}>Precisa de ingresso</option>
+            <option value="0" {% if not s.requires_ticket %}selected{% endif %}>Apenas reserva</option>
+          </select>
+        </div>
+
 
         <div class="flex flex-col gap-2">
           <div class="text-xs text-zinc-400">Ativo</div>

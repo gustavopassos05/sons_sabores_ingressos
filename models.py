@@ -33,6 +33,11 @@ class Purchase(Base):
     buyer_cpf_digits: Mapped[str] = mapped_column(String(14), nullable=True)  # ✅ ADD AQUI
     ticket_qty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     ticket_unit_price_cents: Mapped[int] = mapped_column(Integer, default=5000, nullable=False)
+    reservation_confirmed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    reservation_email_sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    reservation_email_sent_to: Mapped[str] = mapped_column(String(200), nullable=True)
+    reservation_email_last_error: Mapped[str] = mapped_column(Text, nullable=True)
+
 
 
 
@@ -124,3 +129,5 @@ class Show(Base):
     price_cents: Mapped[int] = mapped_column(Integer, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    requires_ticket: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+

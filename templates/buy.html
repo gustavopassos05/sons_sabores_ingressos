@@ -12,7 +12,6 @@
       <select id="show_name" name="show_name" class="w-full rounded-xl border p-3 text-sm" required>
         <option value="">Selecione…</option>
 
-        {# ✅ agora vem do banco #}
         {% for sh in shows %}
           <option value="{{ sh.name }}">
             {{ sh.name }} — {{ sh.date_text }}
@@ -24,8 +23,9 @@
           </option>
         {% endfor %}
       </select>
+
       <p class="text-xs text-zinc-500 mt-1">
-        Se o preço estiver vazio, será usado o preço padrão configurado.
+        Se o show for “Apenas reserva”, não haverá pagamento.
       </p>
     </div>
 
@@ -76,17 +76,26 @@
                 class="w-full rounded-xl border p-3 text-sm"
                 placeholder="Ex: Maria&#10;João&#10;Ana, Pedro; Carla"></textarea>
       <p class="text-xs text-zinc-500 mt-1">
-        O comprador já conta como 1 ingresso.
+        O comprador já conta como 1 pessoa.
       </p>
     </div>
 
-    <!-- ✅ PREVIEW DO TOTAL (por show) -->
+    <!-- Avisos -->
+    <div id="price_warning" class="hidden rounded-xl border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900">
+      Este show precisa de ingresso, mas ainda está sem preço definido. Selecione outro show ou tente novamente mais tarde.
+    </div>
+
+    <div id="reserve_info" class="hidden rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+      Este show é <b>apenas reserva</b> (sem pagamento). Após enviar, aguardaremos sua confirmação e retornaremos em até <b>3 dias</b>.
+    </div>
+
+    <!-- PREVIEW -->
     <div class="rounded-2xl border p-4 bg-zinc-50">
       <div class="text-sm text-zinc-700 space-y-1">
-        <div><span class="font-semibold">Valor por ingresso:</span> <span id="unit_price_lbl">—</span></div>
-        <div><span class="font-semibold">Total de ingressos:</span> <span id="total_people_lbl">1</span></div>
+        <div><span class="font-semibold">Valor por pessoa:</span> <span id="unit_price_lbl">—</span></div>
+        <div><span class="font-semibold">Total de pessoas:</span> <span id="total_people_lbl">1</span></div>
         <div class="text-base">
-          <span class="font-semibold">Total a pagar:</span> <span id="total_price_lbl">—</span>
+          <span class="font-semibold">Total:</span> <span id="total_price_lbl">—</span>
         </div>
       </div>
       <p class="text-xs text-zinc-500 mt-2">
@@ -94,7 +103,7 @@
       </p>
     </div>
 
-    <button type="submit" class="w-full rounded-xl bg-black text-white py-3 font-medium">
+    <button id="submit_btn" type="submit" class="w-full rounded-xl bg-black text-white py-3 font-medium">
       Ir para pagamento
     </button>
 
@@ -102,10 +111,12 @@
 </div>
 
 <script>
-  // ✅ fallback geral (ENV)
+  // fallback geral (ENV)
   const fallbackPriceCents = {{ ticket_price_cents|default(5000) }};
-  // ✅ preços por show vindos do backend (name -> cents)
+  // preços por show (name -> cents ou null)
   const showPrices = {{ show_prices_map|default({})|tojson }};
+  // se precisa ingresso (name -> 1/0)
+  const showRequires = {{ show_requires_map|default({})|tojson }};
 
   function parseGuests(raw) {
     raw = (raw || "").trim();
@@ -129,22 +140,88 @@
     return "R$ " + v;
   }
 
-  function getSelectedPriceCents() {
+  function getSelectedShowName() {
     const sel = document.getElementById("show_name");
-    const name = sel ? sel.value : "";
-    return (showPrices[name] || fallbackPriceCents);
+    return sel ? sel.value : "";
+  }
+
+  function requiresTicketForShow(name) {
+    if (!name) return null;
+    if (name in showRequires) return !!showRequires[name];
+    return true; // default: precisa
+  }
+
+  function getSelectedPriceCents(name) {
+    if (!name) return null;
+    // se veio null do backend, significa "sem preço definido"
+    if (name in showPrices) return showPrices[name];
+    return fallbackPriceCents;
   }
 
   function updatePreview() {
-    const unitCents = getSelectedPriceCents();
+    const name = getSelectedShowName();
+    const req = requiresTicketForShow(name);
+
     const guestsRaw = document.getElementById("guests_text").value;
     const guests = parseGuests(guestsRaw);
     const totalPeople = 1 + guests.length;
-    const totalCents = totalPeople * unitCents;
 
+    const warning = document.getElementById("price_warning");
+    const reserveInfo = document.getElementById("reserve_info");
+    const btn = document.getElementById("submit_btn");
+
+    // nada selecionado
+    if (!name) {
+      document.getElementById("unit_price_lbl").textContent = "—";
+      document.getElementById("total_people_lbl").textContent = String(totalPeople);
+      document.getElementById("total_price_lbl").textContent = "—";
+      warning.classList.add("hidden");
+      reserveInfo.classList.add("hidden");
+      btn.disabled = true;
+      btn.classList.add("opacity-50", "cursor-not-allowed");
+      btn.textContent = "Selecione um show";
+      return;
+    }
+
+    // ✅ show é apenas reserva
+    if (req === false) {
+      document.getElementById("unit_price_lbl").textContent = "Reserva (sem pagamento)";
+      document.getElementById("total_people_lbl").textContent = String(totalPeople);
+      document.getElementById("total_price_lbl").textContent = "R$ 0,00";
+      warning.classList.add("hidden");
+      reserveInfo.classList.remove("hidden");
+      btn.disabled = false;
+      btn.classList.remove("opacity-50", "cursor-not-allowed");
+      btn.textContent = "Solicitar reserva";
+      return;
+    }
+
+    // ✅ show precisa ingresso
+    reserveInfo.classList.add("hidden");
+    const unitCents = getSelectedPriceCents(name);
+
+    // sem preço definido
+    if (unitCents === null) {
+      document.getElementById("unit_price_lbl").textContent = "—";
+      document.getElementById("total_people_lbl").textContent = String(totalPeople);
+      document.getElementById("total_price_lbl").textContent = "—";
+      warning.classList.remove("hidden");
+      btn.disabled = true;
+      btn.classList.add("opacity-50", "cursor-not-allowed");
+      btn.textContent = "Preço a definir";
+      return;
+    }
+
+    // calculo normal
+    const totalCents = totalPeople * unitCents;
     document.getElementById("unit_price_lbl").textContent = formatBRLFromCents(unitCents);
     document.getElementById("total_people_lbl").textContent = String(totalPeople);
     document.getElementById("total_price_lbl").textContent = formatBRLFromCents(totalCents);
+
+    warning.classList.add("hidden");
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+    btn.textContent = "Ir para pagamento";
   }
 
   document.getElementById("guests_text").addEventListener("input", updatePreview);
@@ -152,7 +229,7 @@
   updatePreview();
 </script>
 
-<!-- ✅ máscara + validação CPF/telefone -->
+<!-- ✅ máscara + validação CPF/telefone (seu script original) -->
 <script>
   function onlyDigits(v) { return (v || "").replace(/\D/g, ""); }
 

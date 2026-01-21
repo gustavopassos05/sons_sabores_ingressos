@@ -89,7 +89,9 @@ def buy(event_slug: str):
         )
 
     # mapa de preços por nome do show (se price_cents for NULL, usa fallback)
-    show_prices_map = {sh.name: (sh.price_cents or fallback_price_cents) for sh in shows}
+    show_prices_map = {sh.name: (sh.price_cents if sh.price_cents is not None else None) for sh in shows}
+    show_requires_map = {sh.name: int(sh.requires_ticket or 0) for sh in shows}
+
 
     return render_template(
         "buy.html",
@@ -99,6 +101,8 @@ def buy(event_slug: str):
         form={},
         ticket_price_cents=fallback_price_cents,  # fallback
         show_prices_map=show_prices_map,
+        show_prices_map=show_prices_map,
+        show_requires_map=show_requires_map,
     )
 
 
@@ -151,7 +155,44 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # ✅ SEM anti-duplicidade: sempre cria nova compra, mesmo CPF
+        sh = s.scalar(select(Show).where(Show.name == show_name, Show.is_active == 1))
+        if not sh:
+            flash("Show inválido ou indisponível.", "error")
+            return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+        total_people = 1 + len(guests_lines)
+
+        # ✅ CASO 1: show NÃO precisa de ingresso -> só reserva
+        if int(sh.requires_ticket or 0) == 0:
+            purchase = Purchase(
+                event_id=ev.id,
+                token=purchase_token,
+                show_name=show_name,
+                buyer_name=buyer_name,
+                buyer_cpf=buyer_cpf,
+                buyer_cpf_digits=cpf_digits,
+                buyer_email=buyer_email,
+                buyer_phone=buyer_phone,
+                guests_text=guests_text,
+                status="reservation_pending",  # ✅ novo status
+                created_at=datetime.utcnow(),
+                ticket_qty=total_people,
+                ticket_unit_price_cents=0,
+            )
+            s.add(purchase)
+            s.commit()
+
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
+
+        # ✅ CASO 2: show precisa de ingresso -> mantém fluxo atual (com preço obrigatório)
+        if sh.price_cents is None:
+            flash("Este show ainda está sem preço definido. Selecione outro show.", "error")
+            return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+        unit_price_cents = int(sh.price_cents)
+        total_cents = unit_price_cents * total_people
+
+
 
         purchase = Purchase(
             event_id=ev.id,

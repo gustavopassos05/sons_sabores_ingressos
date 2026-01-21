@@ -161,3 +161,33 @@ def build_tickets_email(
 </div>
 """
     return subject, text, html
+
+
+def build_reservation_email(*, buyer_name: str, show_name: str, date_text: str, token: str, ticket_qty: int):
+    subject = f"Reserva confirmada — {show_name}"
+    text = (
+        f"Olá, {buyer_name}!\n\n"
+        f"Sua reserva foi confirmada ✅\n\n"
+        f"Show: {show_name}\n"
+        f"Data: {date_text}\n"
+        f"Pessoas: {ticket_qty}\n"
+        f"Token: {token}\n\n"
+        "Seus ingressos (se aplicável) serão enviados em outro e-mail/WhatsApp.\n"
+    )
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:16px">
+      <h2 style="margin:0 0 8px 0">Reserva confirmada ✅</h2>
+      <div style="color:#666;margin-bottom:16px">{show_name}</div>
+      <div style="border:1px solid #eee;border-radius:14px;padding:14px">
+        <div><b>Comprador:</b> {buyer_name}</div>
+        <div><b>Pessoas:</b> {ticket_qty}</div>
+        <div><b>Data:</b> {date_text}</div>
+        <div style="color:#666;font-size:12px;margin-top:8px"><b>Token:</b> {token}</div>
+      </div>
+      <div style="color:#666;font-size:12px;margin-top:12px">
+        Ingressos (quando aplicável) serão enviados em outro e-mail/WhatsApp.
+      </div>
+    </div>
+    """
+    return subject, text, html

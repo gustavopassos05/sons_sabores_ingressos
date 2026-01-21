@@ -95,6 +95,7 @@ def shows_update(show_id: int):
     name = (request.form.get("name") or "").strip()
     date_text = (request.form.get("date_text") or "").strip()
 
+
     # ✅ agora vem em reais
     price_brl = (request.form.get("price_brl") or "").strip()
     price_cents = brl_to_cents(price_brl)  # pode ser None
@@ -114,6 +115,9 @@ def shows_update(show_id: int):
         sh.date_text = date_text
         sh.price_cents = price_cents
         sh.is_active = is_active
+        requires_ticket = 1 if (request.form.get("requires_ticket") == "1") else 0
+        sh.requires_ticket = requires_ticket
+
 
         # opcional: se você quiser atualizar slug quando muda nome (não recomendo)
         # sh.slug = slugify(name)
