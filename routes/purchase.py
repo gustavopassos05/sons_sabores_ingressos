@@ -3,32 +3,19 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
+
 from werkzeug.utils import secure_filename
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
 from sqlalchemy import select, desc
 
 from db import db
-from models import Event, Purchase, Payment, Ticket
+from models import Event, Purchase, Payment, Ticket, Show
 from pagbank import create_pix_order  # Orders API (PIX)
 from app_services.email_service import send_email
-from app_services.ticket_generator import slug_filename
-from models import AdminSetting
-from models import Show
 
 bp_purchase = Blueprint("purchase", __name__)
 
-def _get_show_price_cents(s, show_name: str) -> int:
-    # fallback geral
-    fallback = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
-
-    k = f"PRICE_{slug_filename(show_name)}"
-    row = s.scalar(select(AdminSetting).where(AdminSetting.key == k))
-    try:
-        v = int((row.value or "").strip()) if row else fallback
-        return v if v > 0 else fallback
-    except Exception:
-        return fallback
 
 def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
@@ -42,23 +29,7 @@ def _cpf_allowed(cpf_digits: str) -> bool:
     return cpf_digits in allow
 
 
-def _is_open_payment(p: Payment) -> bool:
-    return (p.status or "").lower() == "pending"
-
-
-def _is_expired_payment(p: Payment) -> bool:
-    st = (p.status or "").lower()
-    if st in {"failed", "expired", "canceled", "cancelled"}:
-        return True
-    if p.expires_at and p.expires_at < datetime.utcnow():
-        return True
-    return False
-
-
 def _parse_guests(guests_text: str) -> list[str]:
-    """
-    Aceita convidados por linha ou separado por ',' ';'
-    """
     raw = (guests_text or "").strip()
     if not raw:
         return []
@@ -70,6 +41,7 @@ def _parse_guests(guests_text: str) -> list[str]:
         parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
         tmp.extend(parts)
     return tmp
+
 
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
@@ -88,19 +60,17 @@ def buy(event_slug: str):
             )
         )
 
-    # mapa de preços por nome do show (se price_cents for NULL, usa fallback)
+    # price_cents pode ser NULL -> manda null pro JS (para bloquear compra)
     show_prices_map = {sh.name: (sh.price_cents if sh.price_cents is not None else None) for sh in shows}
     show_requires_map = {sh.name: int(sh.requires_ticket or 0) for sh in shows}
-
 
     return render_template(
         "buy.html",
         event=ev,
-        shows=shows,  # ✅ lista de shows com name/date_text/price_cents
+        shows=shows,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
         form={},
         ticket_price_cents=fallback_price_cents,  # fallback
-        show_prices_map=show_prices_map,
         show_prices_map=show_prices_map,
         show_requires_map=show_requires_map,
     )
@@ -140,11 +110,6 @@ def buy_post(event_slug: str):
     guests_lines = _parse_guests(guests_raw)
     guests_text = "\n".join(guests_lines)
 
-    # preço por show vindo do banco (AdminSetting)
-    unit_price_cents = _get_show_price_cents(s, show_name)
-    total_people = 1 + len(guests_lines)
-    total_cents = unit_price_cents * total_people
-
     exp_min = int(os.getenv("PIX_EXP_MINUTES", "30"))
     expires_at_local = datetime.utcnow() + timedelta(minutes=exp_min)
 
@@ -155,6 +120,7 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
+        # pega show ativo pelo nome (como vem do <select>)
         sh = s.scalar(select(Show).where(Show.name == show_name, Show.is_active == 1))
         if not sh:
             flash("Show inválido ou indisponível.", "error")
@@ -174,7 +140,7 @@ def buy_post(event_slug: str):
                 buyer_email=buyer_email,
                 buyer_phone=buyer_phone,
                 guests_text=guests_text,
-                status="reservation_pending",  # ✅ novo status
+                status="reservation_pending",
                 created_at=datetime.utcnow(),
                 ticket_qty=total_people,
                 ticket_unit_price_cents=0,
@@ -184,15 +150,13 @@ def buy_post(event_slug: str):
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # ✅ CASO 2: show precisa de ingresso -> mantém fluxo atual (com preço obrigatório)
+        # ✅ CASO 2: show precisa de ingresso -> preço obrigatório
         if sh.price_cents is None:
             flash("Este show ainda está sem preço definido. Selecione outro show.", "error")
             return redirect(url_for("purchase.buy", event_slug=event_slug))
 
         unit_price_cents = int(sh.price_cents)
         total_cents = unit_price_cents * total_people
-
-
 
         purchase = Purchase(
             event_id=ev.id,
@@ -208,7 +172,6 @@ def buy_post(event_slug: str):
             created_at=datetime.utcnow(),
             ticket_qty=total_people,
             ticket_unit_price_cents=unit_price_cents,
-
         )
         s.add(purchase)
         s.commit()
@@ -264,6 +227,7 @@ def buy_post(event_slug: str):
 
             return redirect(url_for("purchase.pay_manual", token=purchase.token))
 
+
 @bp_purchase.get("/pay/<int:payment_id>")
 def pay_pix(payment_id: int):
     now = datetime.utcnow()
@@ -279,9 +243,11 @@ def pay_pix(payment_id: int):
 
         ev = s.get(Event, purchase.event_id)
 
+        # já pago -> vai para status (sem mostrar ingressos ao cliente)
         if (purchase.status or "").lower() == "paid" or (p.status or "").lower() == "paid":
-            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
+        # expirou -> marca failed
         if p.expires_at and p.status == "pending" and p.expires_at < now:
             p.status = "failed"
             purchase.status = "failed"
@@ -290,9 +256,8 @@ def pay_pix(payment_id: int):
             s.commit()
             return redirect(url_for("purchase.pay_return", token=purchase.token))
 
-        unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
-        guests_lines = _parse_guests(purchase.guests_text or "")
-        total_people = 1 + len(guests_lines)
+        unit_price_cents = int(purchase.ticket_unit_price_cents or int(os.getenv("TICKET_PRICE_CENTS", "5000")))
+        total_people = int(purchase.ticket_qty or 1)
 
     return render_template(
         "pay_pix.html",
@@ -312,66 +277,18 @@ def pay_refresh(payment_id: int):
 
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
-    finalize_fn = current_app.extensions.get("finalize_purchase")
-
-    def _load():
-        with db() as s:
-            purchase = s.scalar(select(Purchase).where(Purchase.token == token))
-            if not purchase:
-                abort(404)
-
-            payment_paid = s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-                .order_by(Payment.id.desc())
-            )
-            payment = payment_paid or s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == purchase.id)
-                .order_by(Payment.id.desc())
-            )
-
-            tickets = list(
-                s.scalars(
-                    select(Ticket)
-                    .where(Ticket.purchase_id == purchase.id)
-                    .order_by(Ticket.id.asc())
-                )
-            )
-        return purchase, payment, tickets
-
-    purchase, payment, tickets = _load()
-
-    if (
-        payment
-        and (payment.status or "").lower() == "paid"
-        and not (getattr(payment, "tickets_pdf_url", None) or getattr(payment, "tickets_zip_url", None))
-        and callable(finalize_fn)
-    ):
-        try:
-            finalize_fn(purchase.id)
-        except Exception:
-            pass
-        purchase, payment, tickets = _load()
-
-    if (purchase.status or "").lower() == "paid":
-        return redirect(url_for("tickets.purchase_public", token=purchase.token))
-
-    return render_template(
-        "payment_return.html",
-        purchase=purchase,
-        payment=payment,
-        tickets=tickets,
-        app_name=os.getenv("APP_NAME", "Sons & Sabores"),
-    )
+    # mantém para compat / retornos, mas cliente final cai em status
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+    return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
 
 @bp_purchase.get("/pay/manual/<token>")
 def pay_manual(token: str):
-    # mantém ENV por enquanto (você já tem WHATSAPP_NUMBER no Render)
     pix_key = (os.getenv("PIX_MANUAL_KEY") or "").strip()
     whatsapp_number = _digits(os.getenv("WHATSAPP_NUMBER", "")).strip()
-
     receiver = (os.getenv("PIX_MANUAL_RECEIVER_NAME") or "").strip()
     bank = (os.getenv("PIX_MANUAL_BANK") or "").strip()
 
@@ -382,25 +299,20 @@ def pay_manual(token: str):
         if not purchase:
             abort(404)
 
-        payment_paid = s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-            .order_by(Payment.id.desc())
-        )
-        if payment_paid:
-            return redirect(url_for("tickets.purchase_public", token=purchase.token))
+        # se já virou pago, cliente vai pro status
+        if (purchase.status or "").lower() == "paid":
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         payment = s.scalar(
-            select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc())
+            select(Payment).where(Payment.purchase_id == purchase.id).order_by(desc(Payment.id))
         )
         if not payment:
             abort(404)
 
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
-    unit_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    unit_price_cents = int(purchase.ticket_unit_price_cents or int(os.getenv("TICKET_PRICE_CENTS", "5000")))
     unit_price_brl = unit_price_cents / 100
-    ticket_qty = (payment.amount_cents or 0) // unit_price_cents if unit_price_cents else 0
-
+    ticket_qty = int(purchase.ticket_qty or 1)
 
     return render_template(
         "pay_manual.html",
@@ -416,7 +328,6 @@ def pay_manual(token: str):
         unit_price_cents=unit_price_cents,
         unit_price_brl=unit_price_brl,
         ticket_qty=ticket_qty,
-
     )
 
 
@@ -441,7 +352,7 @@ def upload_receipt(token: str):
             abort(404)
 
         payment = s.scalar(
-            select(Payment).where(Payment.purchase_id == purchase.id).order_by(Payment.id.desc())
+            select(Payment).where(Payment.purchase_id == purchase.id).order_by(desc(Payment.id))
         )
         if not payment:
             abort(404)
@@ -457,7 +368,6 @@ def upload_receipt(token: str):
     f.stream.seek(0, os.SEEK_END)
     size = f.stream.tell()
     f.stream.seek(0)
-
     if size > max_bytes:
         flash(f"Arquivo muito grande (máx {max_mb}MB).", "error")
         return redirect(url_for("purchase.pay_manual", token=token))
@@ -479,9 +389,11 @@ def upload_receipt(token: str):
     if not to_email:
         raise RuntimeError("RECEIPT_TO_EMAIL não configurado no Render.")
 
-    subject = f"Comprovante PIX · {purchase.buyer_name} · {purchase.show_name}"
     total_brl = (payment.amount_cents or 0) / 100
+    ticket_qty = int(purchase.ticket_qty or 1)
+    unit_brl = (int(purchase.ticket_unit_price_cents or 0) / 100)
 
+    subject = f"Comprovante PIX · {purchase.buyer_name} · {purchase.show_name}"
     body = (
         "Novo comprovante enviado pelo site.\n\n"
         f"Show: {purchase.show_name}\n"
@@ -490,13 +402,12 @@ def upload_receipt(token: str):
         f"Email: {purchase.buyer_email}\n"
         f"Telefone: {purchase.buyer_phone}\n"
         f"Token: {purchase.token}\n"
-        f"Ingressos: {(payment.amount_cents or 0) // int(os.getenv('TICKET_PRICE_CENTS','5000'))} (R$ 50,00 cada)\n"
+        f"Ingressos/Pessoas: {ticket_qty} × R$ {unit_brl:.2f}\n"
         f"Valor total: R$ {total_brl:.2f}\n\n"
         "Abra o painel Admin → Pendências/Compras para confirmar o pagamento.\n"
         "Os ingressos serão enviados em até 72 horas.\n"
     )
 
-    # envia email simples (texto)
     send_email(
         to_email=to_email,
         subject=subject,
@@ -506,6 +417,7 @@ def upload_receipt(token: str):
     flash("Comprovante enviado ✅ Obrigado!", "success")
     return redirect(url_for("purchase.purchase_status", token=token))
 
+
 @bp_purchase.get("/status/<token>")
 def purchase_status(token: str):
     with db() as s:
@@ -513,31 +425,13 @@ def purchase_status(token: str):
         if not purchase:
             abort(404)
 
-        payment_paid = s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id, Payment.status == "paid")
-            .order_by(Payment.id.desc())
-        )
-        payment = payment_paid or s.scalar(
-            select(Payment)
-            .where(Payment.purchase_id == purchase.id)
-            .order_by(Payment.id.desc())
+        payment = s.scalar(
+            select(Payment).where(Payment.purchase_id == purchase.id).order_by(desc(Payment.id))
         )
 
-    # SEM ingressos aqui
     return render_template(
         "purchase_status.html",
         purchase=purchase,
-        payment=payment,
+        payment=payment,  # pode ser None (reserva)
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
-
-def _get_show_price_cents(s, show_name: str) -> int:
-    fallback = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
-    k = f"PRICE_{slug_filename(show_name)}"
-    row = s.scalar(select(AdminSetting).where(AdminSetting.key == k))
-    try:
-        v = int((row.value or "").strip()) if row else fallback
-        return v if v > 0 else fallback
-    except Exception:
-        return fallback
