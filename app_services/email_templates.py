@@ -107,7 +107,7 @@ def build_tickets_email(
     </div>
 
     <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
-      <div style="font-size:16px; margin-bottom:6px;"><b>Comprador:</b> {buyer_name}</div>
+      <div style="font-size:16px; margin-bottom:6px;"><b>Reserva de:</b> {buyer_name}</div>
       <div style="font-size:16px; margin-bottom:6px;"><b>Ingressos:</b> {ticket_qty} × R$ {unit_brl_str}</div>
       <div style="font-size:18px; margin-bottom:6px;"><b>Total:</b> R$ {total_brl_str}</div>
       <div style="color:#666; font-size:12px;"><b>Token:</b> {token}</div>
