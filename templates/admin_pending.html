@@ -5,7 +5,7 @@
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
       <h2 class="text-2xl font-semibold">Admin · Pendências</h2>
-      <p class="text-sm text-zinc-500">Compras aguardando confirmação manual.</p>
+      <p class="text-sm text-zinc-500">Pagamentos pendentes e reservas aguardando confirmação.</p>
     </div>
 
     <form method="get" class="flex gap-2">
@@ -20,12 +20,18 @@
     {% for row in rows %}
       {% set p = row.purchase %}
       {% set pay = row.payment %}
+      {% set st = (p.status or '')|lower %}
 
       <div class="p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-sm">
 
         <div>
           <div class="text-xs text-zinc-400">Show</div>
           <div class="font-medium">{{ p.show_name }}</div>
+          {% if p.created_at %}
+            <div class="text-xs text-zinc-500 mt-1">
+              {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+          {% endif %}
         </div>
 
         <div>
@@ -39,39 +45,83 @@
         <div>
           <div class="text-xs text-zinc-400">Token</div>
           <div class="text-xs break-all">{{ p.token }}</div>
-          {% if p.created_at %}
-            <div class="text-xs text-zinc-500 mt-1">
-              {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
-            </div>
-          {% endif %}
+          <div class="text-xs text-zinc-500 mt-1">
+            Pessoas: {{ p.ticket_qty or 1 }}
+          </div>
         </div>
 
         <div>
-          <div class="text-xs text-zinc-400">Pagamento</div>
-          <div class="font-semibold">{{ pay.status }}</div>
-          <div class="text-xs text-zinc-500">{{ pay.provider }}</div>
-          <div class="text-xs text-zinc-500">Total: R$ {{ '%.2f'|format((pay.amount_cents or 0)/100) }}</div>
+          <div class="text-xs text-zinc-400">Tipo</div>
+
+          {% if st == "pending_payment" %}
+            <div class="font-semibold">Pagamento</div>
+            {% if pay %}
+              <div class="text-xs text-zinc-500">{{ pay.provider }} · {{ pay.status }}</div>
+              <div class="text-xs text-zinc-500">Total: R$ {{ '%.2f'|format((pay.amount_cents or 0)/100) }}</div>
+            {% else %}
+              <div class="text-xs text-zinc-500">Sem payment</div>
+            {% endif %}
+
+          {% elif st == "reservation_pending" %}
+            <div class="font-semibold">Reserva</div>
+            <div class="text-xs text-zinc-500">Aguardando confirmação</div>
+
+          {% elif st == "reservation_pending_price" %}
+            <div class="font-semibold">Reserva</div>
+            <div class="text-xs text-zinc-500">Aguardando preço</div>
+
+          {% else %}
+            <div class="font-semibold">{{ p.status }}</div>
+          {% endif %}
         </div>
 
-        <div class="flex flex-col gap-2">
-          <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
-             href="{{ url_for('purchase.pay_manual', token=p.token) }}">
-            Abrir página do Pix
-          </a>
+        <div class="flex flex-col gap-2 md:col-span-2">
 
-          <button type="button"
-                  class="rounded-xl bg-black text-white px-3 py-2 text-xs"
-                  onclick="confirmPaid('{{ p.token }}')">
-            Confirmar pagamento
-          </button>
+          {# ✅ BOTÕES POR STATUS #}
+
+          {% if st == "pending_payment" %}
+            <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
+               href="{{ url_for('purchase.pay_manual', token=p.token) }}">
+              Abrir página do Pix
+            </a>
+
+            <button type="button"
+                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                    onclick="confirmPaid('{{ p.token }}')">
+              Confirmar pagamento
+            </button>
+
+          {% elif st == "reservation_pending" %}
+            <button type="button"
+                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                    onclick="confirmReservation('{{ p.token }}')">
+              Confirmar reserva
+            </button>
+
+          {% elif st == "reservation_pending_price" %}
+            <div class="rounded-xl border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-900">
+              Aguardando definição de preço para este show.
+            </div>
+            <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
+               href="{{ url_for('admin_shows.shows_list') }}">
+              Ir para Admin · Shows
+            </a>
+
+            <button type="button"
+                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
+                    onclick="confirmReservation('{{ p.token }}')">
+              Confirmar reserva
+            </button>
+          {% endif %}
 
           <form method="post"
                 action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
                 onsubmit="return confirm('Excluir esta compra? Isso apaga pagamentos e ingressos.');">
             <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-              Excluir compra
+              Excluir
             </button>
           </form>
+
         </div>
 
       </div>
@@ -88,7 +138,6 @@
   async function confirmPaid(purchaseToken) {
     if (!confirm("Confirmar pagamento e gerar ingressos?")) return;
 
-    // ✅ sem ?key — você já está logada por sessão
     const res = await fetch("/admin/mark-paid/" + purchaseToken, { method: "POST" });
 
     if (res.ok) {
@@ -96,6 +145,24 @@
       window.location.reload();
     } else {
       alert("Erro ao confirmar pagamento. Veja logs.");
+    }
+  }
+
+  async function confirmReservation(purchaseToken) {
+    if (!confirm("Confirmar reserva e enviar e-mail (se houver)?")) return;
+
+    const res = await fetch("/admin/confirm-reservation/" + purchaseToken, { method: "POST" });
+
+    if (res.redirected) {
+      window.location.href = res.url;
+      return;
+    }
+
+    if (res.ok) {
+      alert("Reserva confirmada ✅");
+      window.location.reload();
+    } else {
+      alert("Erro ao confirmar reserva. Veja logs.");
     }
   }
 </script>
