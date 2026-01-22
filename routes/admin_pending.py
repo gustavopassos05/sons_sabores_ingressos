@@ -58,31 +58,44 @@ def confirm_reservation(token: str):
     flash("Reserva confirmada ✅ (e-mail enviado se disponível)", "success")
     return redirect(url_for("admin_pending.admin_pending"))
 
+from sqlalchemy import select
+
 @bp_admin_pending.get("/admin/pending")
 @admin_required
 def admin_pending():
-    q = (request.args.get("q") or "").strip().lower()
-
     with db() as s:
-        purchases = list(s.scalars(select(Purchase).order_by(desc(Purchase.id)).limit(300)))
+        purchases = list(
+            s.scalars(
+                select(Purchase)
+                .where(
+                    Purchase.status.in_([
+                        "pending_payment",
+                        "reservation_pending",
+                        "reservation_pending_price",
+                    ])
+                )
+                .order_by(Purchase.id.desc())
+            )
+        )
 
         rows = []
-        for p in purchases:
-            pay = s.scalar(
-                select(Payment).where(Payment.purchase_id == p.id).order_by(desc(Payment.id))
+        for purchase in purchases:
+            # 🔑 AQUI entra o trecho que você perguntou
+            payment = s.scalar(
+                select(Payment)
+                .where(Payment.purchase_id == purchase.id)
+                .order_by(Payment.id.desc())
             )
-            if not pay:
-                continue
-            if (pay.status or "").lower() == "paid":
-                continue
 
-            hay = " ".join([(p.buyer_name or ""), (p.buyer_cpf or ""), (p.show_name or ""), (p.token or "")]).lower()
-            if q and q not in hay:
-                continue
+            rows.append({
+                "purchase": purchase,
+                "payment": payment,  # pode ser None (reservas)
+            })
 
-            rows.append({"purchase": p, "payment": pay})
-
-    return render_template("admin_pending.html", rows=rows, q=q)
+    return render_template(
+        "admin_pending.html",
+        rows=rows,
+    )
 
 @bp_admin_pending.post("/admin/mark-paid/<purchase_token>")
 @admin_required

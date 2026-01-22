@@ -128,7 +128,9 @@ def buy_post(event_slug: str):
 
         total_people = 1 + len(guests_lines)
 
-        # ✅ CASO 1: show NÃO precisa de ingresso -> só reserva
+        total_people = 1 + len(guests_lines)
+
+        # ✅ CASO A: apenas reserva (sem ingresso)
         if int(sh.requires_ticket or 0) == 0:
             purchase = Purchase(
                 event_id=ev.id,
@@ -147,8 +149,34 @@ def buy_post(event_slug: str):
             )
             s.add(purchase)
             s.commit()
-
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
+
+        # ✅ CASO B: show exige ingresso, mas preço ainda não definido
+        if sh.price_cents is None:
+            # aceita reserva mesmo assim
+            purchase = Purchase(
+                event_id=ev.id,
+                token=purchase_token,
+                show_name=show_name,
+                buyer_name=buyer_name,
+                buyer_cpf=buyer_cpf,
+                buyer_cpf_digits=cpf_digits,
+                buyer_email=buyer_email,
+                buyer_phone=buyer_phone,
+                guests_text=guests_text,
+                status="reservation_pending_price",   # ✅ novo status
+                created_at=datetime.utcnow(),
+                ticket_qty=total_people,
+                ticket_unit_price_cents=0,
+            )
+            s.add(purchase)
+            s.commit()
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
+
+        # ✅ CASO C: show exige ingresso e tem preço -> fluxo normal de pagamento
+        unit_price_cents = int(sh.price_cents)
+        total_cents = unit_price_cents * total_people
+
 
         # ✅ CASO 2: show precisa de ingresso -> preço obrigatório
         if sh.price_cents is None:
