@@ -43,6 +43,52 @@ def _parse_guests(guests_text: str) -> list[str]:
     return tmp
 
 
+def _emails_from_env(var_name: str) -> list[str]:
+    raw = (os.getenv(var_name) or "").strip()
+    if not raw:
+        return []
+    parts = [p.strip() for p in raw.replace(";", ",").split(",")]
+    return [p for p in parts if p]
+
+
+def send_reservation_notification(purchase: Purchase) -> None:
+    """
+    Dispara e-mail interno quando alguém faz RESERVA (sem pagamento).
+    Destinatários vêm da ENV RESERVATION_NOTIFY_EMAILS (separado por vírgula).
+    """
+    recipients = _emails_from_env("RESERVATION_NOTIFY_EMAILS")
+    if not recipients:
+        return
+
+    prefix = (os.getenv("RESERVATION_NOTIFY_SUBJECT_PREFIX") or "").strip()
+    prefix = (prefix + " ") if prefix else ""
+
+    subject = f"{prefix}Nova reserva · {purchase.show_name} · {purchase.buyer_name}"
+
+    body = (
+        "Nova reserva criada no site ✅\n\n"
+        f"Show: {purchase.show_name}\n"
+        f"Status: {purchase.status}\n"
+        f"Comprador: {purchase.buyer_name}\n"
+        f"CPF: {getattr(purchase, 'buyer_cpf', '')}\n"
+        f"Email: {getattr(purchase, 'buyer_email', '')}\n"
+        f"Telefone: {getattr(purchase, 'buyer_phone', '')}\n"
+        f"Pessoas: {getattr(purchase, 'ticket_qty', 1)}\n"
+        f"Token: {purchase.token}\n"
+    )
+
+    # best-effort: não quebra o fluxo de reserva se o SMTP falhar
+    for to_email in recipients:
+        try:
+            send_email(
+                to_email=to_email,
+                subject=subject,
+                body_text=body,
+            )
+        except Exception as e:
+            current_app.logger.warning("[RESERVATION EMAIL] falhou para %s: %s", to_email, e)
+
+
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
     fallback_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
@@ -128,8 +174,6 @@ def buy_post(event_slug: str):
 
         total_people = 1 + len(guests_lines)
 
-        total_people = 1 + len(guests_lines)
-
         # ✅ CASO A: apenas reserva (sem ingresso)
         if int(sh.requires_ticket or 0) == 0:
             purchase = Purchase(
@@ -149,11 +193,14 @@ def buy_post(event_slug: str):
             )
             s.add(purchase)
             s.commit()
+
+            # ✅ e-mail interno de notificação (reserva)
+            send_reservation_notification(purchase)
+
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         # ✅ CASO B: show exige ingresso, mas preço ainda não definido
         if sh.price_cents is None:
-            # aceita reserva mesmo assim
             purchase = Purchase(
                 event_id=ev.id,
                 token=purchase_token,
@@ -164,25 +211,20 @@ def buy_post(event_slug: str):
                 buyer_email=buyer_email,
                 buyer_phone=buyer_phone,
                 guests_text=guests_text,
-                status="reservation_pending_price",   # ✅ novo status
+                status="reservation_pending_price",
                 created_at=datetime.utcnow(),
                 ticket_qty=total_people,
                 ticket_unit_price_cents=0,
             )
             s.add(purchase)
             s.commit()
+
+            # ✅ e-mail interno de notificação (reserva com preço pendente)
+            send_reservation_notification(purchase)
+
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         # ✅ CASO C: show exige ingresso e tem preço -> fluxo normal de pagamento
-        unit_price_cents = int(sh.price_cents)
-        total_cents = unit_price_cents * total_people
-
-
-        # ✅ CASO 2: show precisa de ingresso -> preço obrigatório
-        if sh.price_cents is None:
-            flash("Este show ainda está sem preço definido. Selecione outro show.", "error")
-            return redirect(url_for("purchase.buy", event_slug=event_slug))
-
         unit_price_cents = int(sh.price_cents)
         total_cents = unit_price_cents * total_people
 
@@ -305,12 +347,12 @@ def pay_refresh(payment_id: int):
 
 @bp_purchase.get("/pay/return/<token>")
 def pay_return(token: str):
-    # mantém para compat / retornos, mas cliente final cai em status
     with db() as s:
         purchase = s.scalar(select(Purchase).where(Purchase.token == token))
         if not purchase:
             abort(404)
     return redirect(url_for("purchase.purchase_status", token=purchase.token))
+
 
 @bp_purchase.get("/pay/manual/<token>")
 def pay_manual(token: str):
@@ -328,11 +370,9 @@ def pay_manual(token: str):
 
         st = (purchase.status or "").lower()
 
-        # se já virou pago, cliente vai pro status
         if st == "paid":
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # ✅ se NÃO é caso de pagamento, não entra aqui
         if st != "pending_payment":
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
@@ -342,7 +382,6 @@ def pay_manual(token: str):
             .order_by(desc(Payment.id))
         )
 
-        # ✅ não dá 404: volta pro status (ou você pode mostrar uma mensagem amigável)
         if not payment:
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
@@ -380,6 +419,7 @@ def pay_manual_thanks(token: str):
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
 
+
 @bp_purchase.post("/pay/manual/upload/<token>")
 def upload_receipt(token: str):
     with db() as s:
@@ -401,7 +441,6 @@ def upload_receipt(token: str):
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
     max_bytes = max_mb * 1024 * 1024
 
-    # valida tamanho (sem ler tudo pra memória)
     f.stream.seek(0, os.SEEK_END)
     size = f.stream.tell()
     f.stream.seek(0)
@@ -410,9 +449,6 @@ def upload_receipt(token: str):
         return redirect(url_for("purchase.pay_manual", token=token))
 
     mime = (f.mimetype or "").lower()
-
-    # ✅ se você realmente quer "qualquer arquivo", pode relaxar isso.
-    # Mantive seu allowlist (PDF/imagens) como estava.
     allowed = {"application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"}
     if mime not in allowed and not mime.startswith("image/"):
         flash("Formato inválido. Envie imagem ou PDF.", "error")
@@ -448,7 +484,6 @@ def upload_receipt(token: str):
         "Os ingressos serão enviados em até 72 horas.\n"
     )
 
-    # ✅ Lê bytes e anexa no e-mail
     file_bytes = tmp_path.read_bytes()
     attachments = [{
         "filename": safe,
@@ -460,10 +495,9 @@ def upload_receipt(token: str):
         to_email=to_email,
         subject=subject,
         body_text=body,
-        attachments=attachments,  # ✅ agora vai junto
+        attachments=attachments,
     )
 
-    # limpa o arquivo temporário (opcional)
     try:
         tmp_path.unlink(missing_ok=True)
     except Exception:
@@ -471,6 +505,7 @@ def upload_receipt(token: str):
 
     flash("Comprovante enviado ✅ Obrigado!", "success")
     return redirect(url_for("purchase.purchase_status", token=token))
+
 
 @bp_purchase.get("/status/<token>")
 def purchase_status(token: str):
@@ -489,3 +524,39 @@ def purchase_status(token: str):
         payment=payment,  # pode ser None (reserva)
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+from app_services.email_templates import build_reservation_received_email
+
+def send_reservation_confirmation_to_buyer(purchase: Purchase) -> None:
+    """
+    Envia e-mail ao cliente confirmando que a RESERVA foi registrada.
+    Usa template Borogodó (texto + HTML).
+    """
+    buyer_email = (getattr(purchase, "buyer_email", "") or "").strip()
+    if not buyer_email:
+        return
+
+    base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
+    status_url = f"{base_url}/status/{purchase.token}" if base_url else ""
+
+    price_pending = ((purchase.status or "").lower() == "reservation_pending_price")
+
+    subject, text, html = build_reservation_received_email(
+        buyer_name=purchase.buyer_name,
+        buyer_email=buyer_email,
+        show_name=purchase.show_name,
+        token=purchase.token,
+        ticket_qty=int(getattr(purchase, "ticket_qty", 1) or 1),
+        status_url=status_url,
+        price_pending=price_pending,
+    )
+
+    # best-effort: não quebra o fluxo se SMTP falhar
+    try:
+        send_email(
+            to_email=buyer_email,
+            subject=subject,
+            body_text=text,
+            body_html=html,
+        )
+    except Exception as e:
+        current_app.logger.warning("[RESERVATION CONFIRM] falhou para %s: %s", buyer_email, e)

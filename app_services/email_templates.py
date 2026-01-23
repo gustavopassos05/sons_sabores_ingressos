@@ -20,6 +20,10 @@ def _fmt_brl_from_cents(cents: int) -> str:
     return f"{(cents / 100):.2f}".replace(".", ",")
 
 
+def _base_url() -> str:
+    return (os.getenv("BASE_URL") or "").strip().rstrip("/")
+
+
 def build_tickets_email(
     *,
     buyer_name: str,
@@ -81,9 +85,7 @@ def build_tickets_email(
     # ======================
     # HTML (mobile-first)
     # ======================
-    # helpers inline-friendly
     def btn(url: str, label: str) -> str:
-        # botão grande (tap-friendly)
         return (
             f'<a href="{url}" target="_blank" '
             f'style="display:block;background:#111;color:#fff;text-decoration:none;'
@@ -114,7 +116,6 @@ def build_tickets_email(
     </div>
 """
 
-    # Downloads com botões (melhor no celular)
     if zip_url or pdf_all_url:
         html += """
     <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
@@ -126,7 +127,6 @@ def build_tickets_email(
             html += f"{btn(pdf_all_url, '📄 PDF com todos')}"
         html += "    </div>\n"
 
-    # Lista individual (em mobile, link simples — sem poluir)
     if tickets:
         html += """
     <div style="border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:14px;">
@@ -164,6 +164,9 @@ def build_tickets_email(
 
 
 def build_reservation_email(*, buyer_name: str, show_name: str, date_text: str, token: str, ticket_qty: int):
+    """
+    E-mail de RESERVA CONFIRMADA (status: reserved).
+    """
     subject = f"Reserva confirmada — {show_name}"
     text = (
         f"Olá, {buyer_name}!\n\n"
@@ -190,4 +193,137 @@ def build_reservation_email(*, buyer_name: str, show_name: str, date_text: str, 
       </div>
     </div>
     """
+    return subject, text, html
+
+
+def build_reservation_received_email(
+    *,
+    buyer_name: str,
+    buyer_email: str,
+    show_name: str,
+    token: str,
+    ticket_qty: int,
+    status_url: str = "",
+    price_pending: bool = False,
+) -> tuple[str, str, str]:
+    """
+    E-mail de RESERVA REGISTRADA (status: reservation_pending / reservation_pending_price).
+    Linguagem Borogodó + HTML bonito.
+    Retorna: (subject, text, html)
+    """
+    subject = f"Reserva registrada ✅ — {show_name}"
+
+    # fallback URL se não vier
+    if not status_url:
+        base = _base_url()
+        status_url = f"{base}/status/{token}" if base else ""
+
+    # =============== TEXTO (fallback) ===============
+    lines = []
+    lines.append(f"Oi, {buyer_name}! 😊")
+    lines.append("")
+    lines.append("Sua reserva no Sons & Sabores foi registrada com sucesso ✅")
+    lines.append("")
+    lines.append(f"🎷 Show: {show_name}")
+    lines.append(f"👥 Pessoas: {ticket_qty}")
+    lines.append(f"🔎 Token da reserva: {token}")
+    lines.append("")
+
+    if price_pending:
+        lines.append("⚠️ Este show ainda está com o preço em definição.")
+        lines.append("Assim que definirmos, a gente te manda as instruções por e-mail/WhatsApp.")
+        lines.append("")
+    else:
+        lines.append("Agora é com a gente:")
+        lines.append("• Vamos confirmar sua reserva e te avisar por WhatsApp ou e-mail em até 3 dias.")
+        lines.append("")
+
+    if status_url:
+        lines.append("Se quiser acompanhar o status:")
+        lines.append(status_url)
+        lines.append("")
+
+    lines.append("Qualquer dúvida, responde este e-mail ou chama a gente no WhatsApp.")
+    lines.append("")
+    lines.append("Com carinho,")
+    lines.append("Borogodó · Sons & Sabores")
+    text = "\n".join(lines)
+
+    # =============== HTML ===============
+    optional_price_block = ""
+    if price_pending:
+        optional_price_block = """
+          <div style="margin-top:12px;border:1px solid #fde68a;background:#fffbeb;border-radius:14px;padding:12px 14px;color:#92400e;">
+            ⚠️ <b>Preço em definição</b><br/>
+            Este show ainda está com o preço em definição. Assim que definirmos, a gente te manda as instruções por e-mail/WhatsApp.
+          </div>
+        """
+
+    button_block = ""
+    if status_url:
+        button_block = f"""
+          <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:#111827;">
+            <a href="{status_url}" style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;">
+              Acompanhar status da reserva →
+            </a>
+          </div>
+        """
+
+    html = f"""<!doctype html>
+<html lang="pt-BR">
+  <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;padding:24px;">
+      <div style="background:#ffffff;border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.06);overflow:hidden;">
+        <div style="padding:22px 22px 10px 22px;">
+          <div style="font-size:14px;color:#71717a;">Borogodó · Sons & Sabores</div>
+          <h1 style="margin:10px 0 6px 0;font-size:22px;line-height:1.2;color:#111827;">
+            Reserva registrada ✅
+          </h1>
+          <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">
+            Oi, <b>{buyer_name}</b>! 😊<br/>
+            Sua reserva foi registrada com sucesso. Agora é com a gente!
+          </p>
+        </div>
+
+        <div style="padding:0 22px 18px 22px;">
+          <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px 14px;background:#fafafa;">
+            <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Detalhes</div>
+
+            <div style="font-size:15px;color:#111827;line-height:1.6;">
+              <div>🎷 <b>Show:</b> {show_name}</div>
+              <div>👥 <b>Pessoas:</b> {ticket_qty}</div>
+              <div>🔎 <b>Token da reserva:</b>
+                <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">{token}</span>
+              </div>
+            </div>
+          </div>
+
+          {optional_price_block}
+
+          <div style="margin-top:14px;font-size:14px;color:#374151;line-height:1.7;">
+            <b>Próximos passos</b><br/>
+            {"• Vamos confirmar sua reserva e te avisar por WhatsApp ou e-mail em até <b>3 dias</b>." if not price_pending else "• Assim que o preço estiver definido, a gente te manda as instruções por e-mail/WhatsApp."}
+          </div>
+
+          {button_block}
+
+          <p style="margin:16px 0 0 0;font-size:13px;color:#6b7280;line-height:1.6;">
+            Se precisar de algo, responde este e-mail ou chama a gente no WhatsApp.
+          </p>
+        </div>
+
+        <div style="padding:14px 22px;background:#fafafa;border-top:1px solid #e5e7eb;">
+          <div style="font-size:12px;color:#6b7280;">
+            Com carinho, <b>Borogodó</b> 💛
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:14px;font-size:11px;color:#9ca3af;">
+        Você recebeu este e-mail porque uma reserva foi feita no nosso site.
+      </div>
+    </div>
+  </body>
+</html>"""
+
     return subject, text, html
