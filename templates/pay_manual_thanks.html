@@ -13,5 +13,11 @@
   <p class="mt-4 text-xs text-zinc-500">
     Se precisar, fale conosco pelo WhatsApp.
   </p>
+  <a href="{{ url_for('purchase.purchase_status', token=purchase.token) }}"
+   class="mt-4 inline-flex justify-center rounded-xl border px-4 py-3 font-medium hover:bg-zinc-50">
+  Voltar para o status
+</a>
+
 </div>
+
 {% endblock %}

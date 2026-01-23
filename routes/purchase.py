@@ -312,7 +312,6 @@ def pay_return(token: str):
             abort(404)
     return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-
 @bp_purchase.get("/pay/manual/<token>")
 def pay_manual(token: str):
     pix_key = (os.getenv("PIX_MANUAL_KEY") or "").strip()
@@ -327,15 +326,25 @@ def pay_manual(token: str):
         if not purchase:
             abort(404)
 
+        st = (purchase.status or "").lower()
+
         # se já virou pago, cliente vai pro status
-        if (purchase.status or "").lower() == "paid":
+        if st == "paid":
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
+
+        # ✅ se NÃO é caso de pagamento, não entra aqui
+        if st != "pending_payment":
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         payment = s.scalar(
-            select(Payment).where(Payment.purchase_id == purchase.id).order_by(desc(Payment.id))
+            select(Payment)
+            .where(Payment.purchase_id == purchase.id)
+            .order_by(desc(Payment.id))
         )
+
+        # ✅ não dá 404: volta pro status (ou você pode mostrar uma mensagem amigável)
         if not payment:
-            abort(404)
+            return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
     unit_price_cents = int(purchase.ticket_unit_price_cents or int(os.getenv("TICKET_PRICE_CENTS", "5000")))

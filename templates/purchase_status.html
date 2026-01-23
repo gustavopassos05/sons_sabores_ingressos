@@ -85,14 +85,23 @@
         Enviar comprovante / ver dados do Pix
       </a>
     </div>
-  {% else %}
+  {% elif st in ['reservation_pending', 'reservation_pending_price', 'reserved', 'paid'] %}
+    {# ✅ não tem pagamento manual aqui #}
     <div class="mt-4 grid gap-2">
-      <a href="{{ url_for('purchase.pay_manual', token=purchase.token) }}"
-         class="rounded-xl border py-3 font-medium hover:bg-zinc-50">
-        Ver instruções / enviar comprovante
+      {% set wa_text = ("Olá! Fiz uma reserva no Sons & Sabores ✅\n"
+                        ~ "Show: " ~ purchase.show_name ~ "\n"
+                        ~ "Nome: " ~ purchase.buyer_name ~ "\n"
+                        ~ "Pessoas: " ~ (purchase.ticket_qty or 1) ~ "\n"
+                        ~ "Token: " ~ purchase.token) %}
+      {% set wa_link = "https://wa.me/" ~ whatsapp_number ~ "?text=" ~ wa_text|urlencode %}
+      <a href="{{ wa_link }}" target="_blank" rel="noopener"
+         class="rounded-xl border py-3 font-medium hover:bg-zinc-50 text-center">
+        Falar com a equipe no WhatsApp
       </a>
+
     </div>
   {% endif %}
+
 
   <div class="mt-4 text-center text-xs text-zinc-500">
     Você pode fechar esta página com segurança.
