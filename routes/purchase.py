@@ -380,7 +380,6 @@ def pay_manual_thanks(token: str):
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
 
-
 @bp_purchase.post("/pay/manual/upload/<token>")
 def upload_receipt(token: str):
     with db() as s:
@@ -402,6 +401,7 @@ def upload_receipt(token: str):
     max_mb = int(os.getenv("RECEIPT_MAX_MB", "6"))
     max_bytes = max_mb * 1024 * 1024
 
+    # valida tamanho (sem ler tudo pra memória)
     f.stream.seek(0, os.SEEK_END)
     size = f.stream.tell()
     f.stream.seek(0)
@@ -410,6 +410,9 @@ def upload_receipt(token: str):
         return redirect(url_for("purchase.pay_manual", token=token))
 
     mime = (f.mimetype or "").lower()
+
+    # ✅ se você realmente quer "qualquer arquivo", pode relaxar isso.
+    # Mantive seu allowlist (PDF/imagens) como estava.
     allowed = {"application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"}
     if mime not in allowed and not mime.startswith("image/"):
         flash("Formato inválido. Envie imagem ou PDF.", "error")
@@ -445,15 +448,29 @@ def upload_receipt(token: str):
         "Os ingressos serão enviados em até 72 horas.\n"
     )
 
+    # ✅ Lê bytes e anexa no e-mail
+    file_bytes = tmp_path.read_bytes()
+    attachments = [{
+        "filename": safe,
+        "content_type": mime or "application/octet-stream",
+        "data": file_bytes,
+    }]
+
     send_email(
         to_email=to_email,
         subject=subject,
         body_text=body,
+        attachments=attachments,  # ✅ agora vai junto
     )
+
+    # limpa o arquivo temporário (opcional)
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
     flash("Comprovante enviado ✅ Obrigado!", "success")
     return redirect(url_for("purchase.purchase_status", token=token))
-
 
 @bp_purchase.get("/status/<token>")
 def purchase_status(token: str):
