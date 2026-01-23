@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Payment, Ticket, Event
+from config_ticket import QR_SIZE_PX
 
 from app_services.ticket_generator import (
     generate_single_ticket_png,
@@ -170,7 +171,8 @@ def finalize_purchase_factory() -> Callable[[int], None]:
 
                 # ✅ QR individual do ticket
                 qr_target_url = f"{base_url}/ticket/{t.token}"
-                qr_img = make_qr_image(qr_target_url, size_px=360)
+                qr_img = make_qr_image(qr_target_url, size_px=QR_SIZE_PX)
+
 
                 # gera PNG com show + nome
                 png_path = generate_single_ticket_png(
