@@ -4,8 +4,11 @@ import unicodedata
 from io import BytesIO
 from pathlib import Path
 from typing import Tuple
+
 from config_ticket import QR_Y_FACTOR, QR_Y_OFFSET, QR_SIZE_PX
+
 import qrcode
+from qrcode.constants import ERROR_CORRECT_Q
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -20,6 +23,21 @@ def slug_filename(texto: str) -> str:
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
+
+def _white_to_transparent(img: Image.Image) -> Image.Image:
+    """Converte branco (#fff) em transparente (alpha=0), mantendo o restante opaco."""
+    img = img.convert("RGBA")
+    data = img.getdata()
+    new_data = []
+    for r, g, b, a in data:
+        if r >= 250 and g >= 250 and b >= 250:
+            new_data.append((r, g, b, 0))
+        else:
+            new_data.append((r, g, b, 255))
+    img.putdata(new_data)
+    return img
+
+
 def make_qr_image(data: str, size_px: int = 360) -> Image.Image:
     qr = qrcode.QRCode(
         version=None,
@@ -30,10 +48,15 @@ def make_qr_image(data: str, size_px: int = 360) -> Image.Image:
     qr.add_data(data)
     qr.make(fit=True)
 
-    img = qr.make_image(
-        fill_color="black",
-        back_color=None,   # 👈 FUNDO TRANSPARENTE
-    ).convert("RGBA")
+    # Gera com fundo branco (compatível com qualquer versão do qrcode)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    # Se vier como PilImage, extrai a imagem PIL
+    if hasattr(img, "get_image"):
+        img = img.get_image()
+
+    img = img.convert("RGBA")
+    img = _white_to_transparent(img)  # deixa o fundo transparente
 
     img = img.resize((size_px, size_px), Image.LANCZOS)
     return img
