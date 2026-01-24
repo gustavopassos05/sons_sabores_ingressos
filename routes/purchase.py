@@ -3,7 +3,6 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
-
 from werkzeug.utils import secure_filename
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
@@ -105,6 +104,7 @@ def send_reservation_notification(purchase: Purchase) -> None:
 @bp_purchase.get("/buy/<event_slug>")
 def buy(event_slug: str):
     fallback_price_cents = int(os.getenv("TICKET_PRICE_CENTS", "5000"))
+    preselect_slug = (request.args.get("show_slug") or "").strip()
 
     with db() as s:
         ev = s.scalar(select(Event).where(Event.slug == event_slug))
@@ -132,6 +132,7 @@ def buy(event_slug: str):
         ticket_price_cents=fallback_price_cents,  # fallback
         show_prices_map=show_prices_map,
         show_requires_map=show_requires_map,
+        preselect_slug=preselect_slug,
     )
 
 

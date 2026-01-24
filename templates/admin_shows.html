@@ -6,9 +6,18 @@
 
   <div class="rounded-xl border p-4 mb-5">
     <div class="font-semibold mb-2">Criar novo show</div>
-    <form method="post" action="{{ url_for('admin_shows.shows_create') }}" class="grid grid-cols-1 md:grid-cols-4 gap-2">
+
+    <form method="post"
+          action="{{ url_for('admin_shows.shows_create') }}"
+          enctype="multipart/form-data"
+          class="grid grid-cols-1 md:grid-cols-4 gap-2">
+
       <input name="name" class="rounded-xl border p-3 text-sm" placeholder="Nome do show" required>
+
+      <input name="title" class="rounded-xl border p-3 text-sm" placeholder="Título (opcional, p/ card)">
+
       <input name="date_text" class="rounded-xl border p-3 text-sm" placeholder="Data/hora (texto)" required>
+
       <input
         type="text"
         name="price_brl"
@@ -17,56 +26,144 @@
         class="rounded-xl border p-3 text-sm"
       />
 
-      <button class="rounded-xl bg-black text-white px-4 py-3 text-sm">Criar</button>
+      <div class="md:col-span-4">
+        <textarea name="description"
+                  rows="3"
+                  class="w-full rounded-xl border p-3 text-sm"
+                  placeholder="Descrição (opcional, p/ card)"></textarea>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="text-xs text-zinc-500">Imagem do show (JPG/PNG/WEBP)</label>
+        <input type="file"
+               name="image_file"
+               accept="image/*"
+               class="w-full rounded-xl border p-3 text-sm bg-white">
+        <div class="text-xs text-zinc-500 mt-1">
+          Dica: use uma imagem horizontal (ex: 1200×675).
+        </div>
+      </div>
+
+      <div class="md:col-span-1">
+        <label class="text-xs text-zinc-500">Ingresso?</label>
+        <select name="requires_ticket" class="w-full rounded-xl border p-3 text-sm">
+          <option value="1" selected>Precisa de ingresso</option>
+          <option value="0">Apenas reserva</option>
+        </select>
+      </div>
+
+      <div class="md:col-span-1 flex items-end">
+        <button class="w-full rounded-xl bg-black text-white px-4 py-3 text-sm">Criar</button>
+      </div>
     </form>
-    <div class="text-xs text-zinc-500 mt-2">Preço em centavos: 5000 = R$ 50,00. Pode deixar vazio.</div>
+
+    <div class="text-xs text-zinc-500 mt-2">
+      Preço em centavos: 5000 = R$ 50,00. Pode deixar vazio (preço em definição).
+    </div>
   </div>
 
   <div class="rounded-xl border divide-y">
     {% for s in shows %}
-      <form method="post" action="{{ url_for('admin_shows.shows_update', show_id=s.id) }}" class="p-4 grid grid-cols-1 md:grid-cols-6 gap-2 text-sm">
-        <div class="md:col-span-2">
+      <form method="post"
+            action="{{ url_for('admin_shows.shows_update', show_id=s.id) }}"
+            enctype="multipart/form-data"
+            class="p-4 grid grid-cols-1 md:grid-cols-12 gap-2 text-sm">
+
+        <!-- Nome + slug -->
+        <div class="md:col-span-3">
           <div class="text-xs text-zinc-400">Nome</div>
           <input name="name" value="{{ s.name }}" class="w-full rounded-xl border p-2 text-sm">
           <div class="text-xs text-zinc-500 break-all mt-1">slug: {{ s.slug }}</div>
         </div>
 
+        <!-- Título -->
+        <div class="md:col-span-3">
+          <div class="text-xs text-zinc-400">Título (card)</div>
+          <input name="title" value="{{ s.title or '' }}" class="w-full rounded-xl border p-2 text-sm" placeholder="Título (opcional)">
+        </div>
+
+        <!-- Data -->
         <div class="md:col-span-2">
           <div class="text-xs text-zinc-400">Data</div>
           <input name="date_text" value="{{ s.date_text }}" class="w-full rounded-xl border p-2 text-sm">
         </div>
 
-        <div>
+        <!-- Preço -->
+        <div class="md:col-span-1">
           <div class="text-xs text-zinc-400">Preço</div>
           <input
             type="text"
             name="price_brl"
             inputmode="decimal"
             placeholder="50,00"
-            class="w-28 rounded-xl border p-2 text-xs"
+            value="{% if s.price_cents is not none %}{{ '%.2f'|format((s.price_cents or 0)/100) }}{% endif %}"
+            class="w-full rounded-xl border p-2 text-xs"
           />
-
+          <div class="text-[11px] text-zinc-400 mt-1">
+            vazio = em definição
+          </div>
         </div>
-        <div>
+
+        <!-- Ingresso? -->
+        <div class="md:col-span-1">
           <div class="text-xs text-zinc-400">Ingresso?</div>
           <select name="requires_ticket" class="rounded-xl border p-2 text-sm w-full">
-            <option value="1" {% if s.requires_ticket %}selected{% endif %}>Precisa de ingresso</option>
-            <option value="0" {% if not s.requires_ticket %}selected{% endif %}>Apenas reserva</option>
+            <option value="1" {% if s.requires_ticket %}selected{% endif %}>Precisa</option>
+            <option value="0" {% if not s.requires_ticket %}selected{% endif %}>Reserva</option>
           </select>
         </div>
 
-
-        <div class="flex flex-col gap-2">
+        <!-- Ativo -->
+        <div class="md:col-span-1">
           <div class="text-xs text-zinc-400">Ativo</div>
-          <select name="is_active" class="rounded-xl border p-2 text-sm">
+          <select name="is_active" class="rounded-xl border p-2 text-sm w-full">
             <option value="1" {% if s.is_active %}selected{% endif %}>Sim</option>
             <option value="0" {% if not s.is_active %}selected{% endif %}>Não</option>
           </select>
+        </div>
 
+        <!-- Descrição -->
+        <div class="md:col-span-6">
+          <div class="text-xs text-zinc-400">Descrição (card)</div>
+          <textarea name="description"
+                    rows="2"
+                    class="w-full rounded-xl border p-2 text-sm"
+                    placeholder="Descrição (opcional)">{{ s.description or '' }}</textarea>
+        </div>
+
+        <!-- Imagem + preview -->
+        <div class="md:col-span-4">
+          <div class="text-xs text-zinc-400">Imagem</div>
+
+          {% if s.image_url %}
+            <div class="mb-2">
+              <img src="{{ s.image_url }}"
+                   alt="Imagem do show"
+                   class="w-full max-w-[320px] rounded-xl border object-cover">
+              <div class="text-[11px] text-zinc-400 break-all mt-1">
+                {{ s.image_url }}
+              </div>
+            </div>
+          {% else %}
+            <div class="text-xs text-zinc-400 mb-2">Sem imagem</div>
+          {% endif %}
+
+          <input type="file"
+                 name="image_file"
+                 accept="image/*"
+                 class="w-full rounded-xl border p-2 text-xs bg-white">
+          <div class="text-[11px] text-zinc-400 mt-1">
+            Envie para substituir a imagem atual (JPG/PNG/WEBP).
+          </div>
+        </div>
+
+        <!-- Botão salvar -->
+        <div class="md:col-span-2 flex flex-col justify-end gap-2">
           <button class="rounded-xl bg-black text-white px-4 py-2 text-xs">
             Salvar
           </button>
         </div>
+
       </form>
     {% endfor %}
   </div>
