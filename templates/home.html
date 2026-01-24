@@ -12,39 +12,44 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {% for c in cards %}
       <div class="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col">
-        <div class="aspect-[16/9] bg-zinc-100 overflow-hidden">
+
+        {# ✅ imagem sem cortar rosto #}
+        <div class="aspect-[16/9] bg-zinc-100 overflow-hidden flex items-center justify-center">
           <img
             src="{{ c.img }}"
             alt="{{ c.original_name or c.name }}"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-contain"
             onerror="this.onerror=null;this.src='{{ url_for('static', filename='shows/placeholder.jpg') }}';"
           />
         </div>
 
         <div class="p-4 flex-1 flex flex-col gap-2">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              {# ✅ TÍTULO (grande) #}
-              <div class="text-lg font-semibold leading-tight truncate">{{ c.name }}</div>
 
-              {# ✅ NOME REAL DO SHOW (menor) #}
-              {% if c.original_name and c.original_name != c.name %}
-                <div class="text-sm text-zinc-600 leading-snug truncate">
-                  {{ c.original_name }}
-                </div>
-              {% endif %}
-
-              <div class="text-sm text-zinc-500">{{ c.subtitle }}</div>
-            </div>
-
-            {% if c.date_text %}
-              <div class="text-xs text-zinc-600 bg-zinc-100 rounded-full px-3 py-1 whitespace-nowrap">
-                {{ c.date_text }}
-              </div>
-            {% endif %}
+          {# ✅ Título sem truncate (quebra em até 3 linhas) #}
+          <div class="text-lg font-semibold leading-tight text-zinc-900"
+               style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">
+            {{ c.name }}
           </div>
 
-          <p class="text-sm text-zinc-700 leading-relaxed">
+          {# ✅ Nome real menor (se for diferente) #}
+          {% if c.original_name and c.original_name != c.name %}
+            <div class="text-sm text-zinc-600 leading-snug"
+                 style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+              {{ c.original_name }}
+            </div>
+          {% endif %}
+
+          {# ✅ Data/hora em outra linha #}
+          {% if c.date_text %}
+            <div class="text-xs text-zinc-600 bg-zinc-100 rounded-full px-3 py-1 w-fit">
+              {{ c.date_text }}
+            </div>
+          {% endif %}
+
+          <div class="text-sm text-zinc-500">{{ c.subtitle }}</div>
+
+          <p class="text-sm text-zinc-700 leading-relaxed"
+             style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">
             {{ c.desc }}
           </p>
 
@@ -72,6 +77,7 @@
           <div class="text-xs text-zinc-400 text-center">
             Você será direcionado(a) para o formulário de reserva.
           </div>
+
         </div>
       </div>
     {% endfor %}
