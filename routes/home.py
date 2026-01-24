@@ -1,10 +1,8 @@
 # routes/home.py
 import os
 from pathlib import Path
-
 from flask import Blueprint, render_template, abort, url_for
-from sqlalchemy import select, desc
-
+from sqlalchemy import select, desc as sa_desc
 from db import db
 from models import Event, Show
 
@@ -40,7 +38,8 @@ def home():
             s.scalars(
                 select(Show)
                 .where(Show.is_active == 1)
-                .order_by(desc(Show.id))
+                .order_by(sa_desc(Show.id))
+
             )
         )
 
