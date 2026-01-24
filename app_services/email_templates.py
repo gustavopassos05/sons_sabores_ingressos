@@ -163,31 +163,76 @@ def build_tickets_email(
     return subject, text, html
 
 
-def build_reservation_email(*, buyer_name: str, show_name: str, date_text: str, token: str, ticket_qty: int):
+def build_reservation_email(
+    *,
+    buyer_name: str,
+    show_name: str,
+    date_text: str,
+    token: str,
+    ticket_qty: int,
+    guests: Optional[List[str]] = None,  # ✅ NOVO: acompanhantes
+) -> tuple[str, str, str]:
     """
     E-mail de RESERVA CONFIRMADA (status: reserved).
+    Inclui acompanhantes (quando houver).
     """
     subject = f"Reserva confirmada — {show_name}"
-    text = (
-        f"Olá, {buyer_name}!\n\n"
-        f"Sua reserva foi confirmada ✅\n\n"
-        f"Show: {show_name}\n"
-        f"Data: {date_text}\n"
-        f"Pessoas: {ticket_qty}\n"
-        f"Token: {token}\n\n"
-        "Seus ingressos (se aplicável) serão enviados em outro e-mail/WhatsApp.\n"
-    )
+
+    # ======================
+    # TEXTO (fallback) — OPÇÃO 3
+    # ======================
+    lines = [
+        f"Olá, {buyer_name}!",
+        "",
+        "Sua reserva foi confirmada ✅",
+        "",
+        f"Show: {show_name}",
+        f"Data: {date_text}",
+        f"Pessoas: {ticket_qty}",
+        f"Token: {token}",
+    ]
+
+    if guests:
+        lines += ["", "Acompanhantes:"]
+        for g in guests:
+            lines.append(f"• {g}")
+
+    lines += [
+        "",
+        "Seus ingressos (quando aplicável) serão enviados em outro e-mail/WhatsApp.",
+    ]
+
+    text = "\n".join(lines)
+
+    # ======================
+    # HTML — OPÇÃO 4
+    # ======================
+    guests_block = ""
+    if guests:
+        items = "".join(f"<li>{g}</li>" for g in guests)
+        guests_block = f"""
+      <div style="margin-top:12px;border:1px solid #eee;border-radius:14px;padding:14px">
+        <div style="font-size:14px;margin-bottom:6px;"><b>Acompanhantes</b></div>
+        <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.6;">
+          {items}
+        </ul>
+      </div>
+        """
 
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:16px">
       <h2 style="margin:0 0 8px 0">Reserva confirmada ✅</h2>
       <div style="color:#666;margin-bottom:16px">{show_name}</div>
+
       <div style="border:1px solid #eee;border-radius:14px;padding:14px">
         <div><b>Comprador:</b> {buyer_name}</div>
         <div><b>Pessoas:</b> {ticket_qty}</div>
         <div><b>Data:</b> {date_text}</div>
         <div style="color:#666;font-size:12px;margin-top:8px"><b>Token:</b> {token}</div>
       </div>
+
+      {guests_block}
+
       <div style="color:#666;font-size:12px;margin-top:12px">
         Ingressos (quando aplicável) serão enviados em outro e-mail/WhatsApp.
       </div>
@@ -205,6 +250,7 @@ def build_reservation_received_email(
     ticket_qty: int,
     status_url: str = "",
     price_pending: bool = False,
+    guests: Optional[list[str]] = None,
 ) -> tuple[str, str, str]:
     """
     E-mail de RESERVA REGISTRADA (status: reservation_pending / reservation_pending_price).
@@ -213,7 +259,6 @@ def build_reservation_received_email(
     """
     subject = f"Reserva registrada ✅ — {show_name}"
 
-    # fallback URL se não vier
     if not status_url:
         base = _base_url()
         status_url = f"{base}/status/{token}" if base else ""
@@ -227,6 +272,13 @@ def build_reservation_received_email(
     lines.append(f"🎷 Show: {show_name}")
     lines.append(f"👥 Pessoas: {ticket_qty}")
     lines.append(f"🔎 Token da reserva: {token}")
+
+    if guests:
+        lines.append("")
+        lines.append("Acompanhantes:")
+        for g in guests:
+            lines.append(f"• {g}")
+
     lines.append("")
 
     if price_pending:
@@ -269,6 +321,18 @@ def build_reservation_received_email(
           </div>
         """
 
+    guests_block = ""
+    if guests:
+        items = "".join(f"<li>{g}</li>" for g in guests)
+        guests_block = f"""
+          <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;">
+            <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">Acompanhantes</div>
+            <ul style="margin:0;padding-left:18px;color:#111827;font-size:14px;line-height:1.6;">
+              {items}
+            </ul>
+          </div>
+        """
+
     html = f"""<!doctype html>
 <html lang="pt-BR">
   <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
@@ -298,6 +362,7 @@ def build_reservation_received_email(
             </div>
           </div>
 
+          {guests_block}
           {optional_price_block}
 
           <div style="margin-top:14px;font-size:14px;color:#374151;line-height:1.7;">

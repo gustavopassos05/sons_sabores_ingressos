@@ -13,9 +13,9 @@ from db import db
 from models import Event, Purchase, Payment, Ticket, Show
 from pagbank import create_pix_order  # Orders API (PIX)
 from app_services.email_service import send_email
+from app_services.email_templates import build_reservation_received_email
 
 bp_purchase = Blueprint("purchase", __name__)
-
 
 def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
@@ -147,7 +147,6 @@ def buy_post(event_slug: str):
         flash("CPF é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
-    # ✅ trava allowlist (soft launch)
     if not _cpf_allowed(cpf_digits):
         flash("Este CPF ainda não está liberado para compra.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
@@ -166,15 +165,18 @@ def buy_post(event_slug: str):
         if not ev:
             abort(404)
 
-        # pega show ativo pelo nome (como vem do <select>)
-        sh = s.scalar(select(Show).where(Show.name == show_name, Show.is_active == 1))
+        sh = s.scalar(
+            select(Show).where(Show.name == show_name, Show.is_active == 1)
+        )
         if not sh:
             flash("Show inválido ou indisponível.", "error")
             return redirect(url_for("purchase.buy", event_slug=event_slug))
 
         total_people = 1 + len(guests_lines)
 
-        # ✅ CASO A: apenas reserva (sem ingresso)
+        # =========================================================
+        # CASO A — RESERVA SIMPLES (não exige ingresso)
+        # =========================================================
         if int(sh.requires_ticket or 0) == 0:
             purchase = Purchase(
                 event_id=ev.id,
@@ -194,12 +196,48 @@ def buy_post(event_slug: str):
             s.add(purchase)
             s.commit()
 
-            # ✅ e-mail interno de notificação (reserva)
+            # 🔔 e-mail interno
             send_reservation_notification(purchase)
+
+            # 📧 e-mail para o cliente — RESERVA REGISTRADA
+            if buyer_email and "@" in buyer_email:
+                guests = [g.strip() for g in guests_lines if g.strip()]
+                status_url = f"{base_url}/status/{purchase.token}"
+
+                subject, text, html = build_reservation_received_email(
+                    buyer_name=buyer_name,
+                    buyer_email=buyer_email,
+                    show_name=show_name,
+                    token=purchase.token,
+                    ticket_qty=total_people,
+                    status_url=status_url,
+                    price_pending=False,
+                    guests=guests,
+                )
+                try:
+                    send_email(
+                        to_email=buyer_email,
+                        subject=subject,
+                        body_text=text,
+                        body_html=html,
+                    )
+                    current_app.logger.info(
+                        "[RESERVATION RECEIVED EMAIL] sent token=%s to=%s",
+                        purchase.token,
+                        buyer_email,
+                    )
+                except Exception as e:
+                    current_app.logger.warning(
+                        "[RESERVATION RECEIVED EMAIL] failed token=%s err=%s",
+                        purchase.token,
+                        e,
+                    )
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # ✅ CASO B: show exige ingresso, mas preço ainda não definido
+        # =========================================================
+        # CASO B — RESERVA COM PREÇO PENDENTE
+        # =========================================================
         if sh.price_cents is None:
             purchase = Purchase(
                 event_id=ev.id,
@@ -219,12 +257,46 @@ def buy_post(event_slug: str):
             s.add(purchase)
             s.commit()
 
-            # ✅ e-mail interno de notificação (reserva com preço pendente)
             send_reservation_notification(purchase)
+
+            if buyer_email and "@" in buyer_email:
+                guests = [g.strip() for g in guests_lines if g.strip()]
+                status_url = f"{base_url}/status/{purchase.token}"
+
+                subject, text, html = build_reservation_received_email(
+                    buyer_name=buyer_name,
+                    buyer_email=buyer_email,
+                    show_name=show_name,
+                    token=purchase.token,
+                    ticket_qty=total_people,
+                    status_url=status_url,
+                    price_pending=True,
+                    guests=guests,
+                )
+                try:
+                    send_email(
+                        to_email=buyer_email,
+                        subject=subject,
+                        body_text=text,
+                        body_html=html,
+                    )
+                    current_app.logger.info(
+                        "[RESERVATION RECEIVED EMAIL] sent token=%s to=%s",
+                        purchase.token,
+                        buyer_email,
+                    )
+                except Exception as e:
+                    current_app.logger.warning(
+                        "[RESERVATION RECEIVED EMAIL] failed token=%s err=%s",
+                        purchase.token,
+                        e,
+                    )
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # ✅ CASO C: show exige ingresso e tem preço -> fluxo normal de pagamento
+        # =========================================================
+        # CASO C — SHOW COM INGRESSO (fluxo de pagamento)
+        # =========================================================
         unit_price_cents = int(sh.price_cents)
         total_cents = unit_price_cents * total_people
 
@@ -248,7 +320,6 @@ def buy_post(event_slug: str):
 
         pagbank_notification_url = f"{base_url}/webhooks/pagbank"
 
-        # tenta PIX Orders API -> se der whitelist, cai no manual
         try:
             order_id, qr_text, qr_b64, expires_at = create_pix_order(
                 reference_id=f"purchase-{purchase.id}",
@@ -526,10 +597,24 @@ def purchase_status(token: str):
     )
 from app_services.email_templates import build_reservation_received_email
 
+def _parse_guests_for_email(guests_text: str) -> list[str]:
+    raw = (guests_text or "").strip()
+    if not raw:
+        return []
+    names = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
+        names.extend(parts)
+    return names
+
+
 def send_reservation_confirmation_to_buyer(purchase: Purchase) -> None:
     """
-    Envia e-mail ao cliente confirmando que a RESERVA foi registrada.
-    Usa template Borogodó (texto + HTML).
+    Envia e-mail ao cliente confirmando que a RESERVA foi registrada,
+    incluindo nomes dos acompanhantes.
     """
     buyer_email = (getattr(purchase, "buyer_email", "") or "").strip()
     if not buyer_email:
@@ -540,6 +625,8 @@ def send_reservation_confirmation_to_buyer(purchase: Purchase) -> None:
 
     price_pending = ((purchase.status or "").lower() == "reservation_pending_price")
 
+    guests = _parse_guests_for_email(getattr(purchase, "guests_text", ""))
+
     subject, text, html = build_reservation_received_email(
         buyer_name=purchase.buyer_name,
         buyer_email=buyer_email,
@@ -548,9 +635,9 @@ def send_reservation_confirmation_to_buyer(purchase: Purchase) -> None:
         ticket_qty=int(getattr(purchase, "ticket_qty", 1) or 1),
         status_url=status_url,
         price_pending=price_pending,
+        guests=guests,  # ✅ NOVO
     )
 
-    # best-effort: não quebra o fluxo se SMTP falhar
     try:
         send_email(
             to_email=buyer_email,
@@ -559,4 +646,8 @@ def send_reservation_confirmation_to_buyer(purchase: Purchase) -> None:
             body_html=html,
         )
     except Exception as e:
-        current_app.logger.warning("[RESERVATION CONFIRM] falhou para %s: %s", buyer_email, e)
+        current_app.logger.warning(
+            "[RESERVATION CONFIRM] falhou para %s: %s",
+            buyer_email,
+            e,
+        )
