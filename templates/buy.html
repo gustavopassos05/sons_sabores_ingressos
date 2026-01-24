@@ -5,7 +5,7 @@
   <h2 class="text-2xl font-semibold mb-1">Sons & Sabores</h2>
   <p class="text-sm text-zinc-500 mb-4">Compra de ingressos</p>
 
-  <form method="POST" action="{{ url_for('purchase.buy_post', event_slug=event.slug) }}" class="space-y-4">
+  <form method="POST" id="buyForm" action="{{ url_for('purchase.buy_post', event_slug=event.slug) }}" class="space-y-4">
 
     <div>
       <label class="text-sm text-zinc-600">Show</label>
@@ -333,5 +333,21 @@
     });
   }
 </script>
+<script>
+  (function () {
+    const form = document.getElementById("buyForm");
+    if (!form) return;
+
+    form.addEventListener("submit", function () {
+      const btn = form.querySelector('button[type="submit"], input[type="submit"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.innerText;
+        btn.innerText = "Enviando…";
+      }
+    });
+  })();
+</script>
+
 
 {% endblock %}

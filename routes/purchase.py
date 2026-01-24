@@ -187,6 +187,29 @@ def buy_post(event_slug: str):
 
         total_people = 1 + len(guests_lines)
 
+        dedupe_window_sec = int(os.getenv("RESERVATION_DEDUPE_SECONDS", "120"))
+        cutoff = datetime.utcnow() - timedelta(seconds=dedupe_window_sec)
+
+        # chave simples pra comparar "mesma reserva"
+        dedupe_statuses = {"reservation_pending", "reservation_pending_price"}
+
+        existing = s.scalar(
+            select(Purchase)
+            .where(
+                Purchase.event_id == ev.id,
+                Purchase.show_name == show_name,
+                Purchase.buyer_cpf_digits == cpf_digits,
+                Purchase.status.in_(list(dedupe_statuses)),
+                Purchase.created_at >= cutoff,
+            )
+            .order_by(Purchase.id.desc())
+        )
+
+        if existing:
+            current_app.logger.info("[DEDUPE] Reusando reserva recente token=%s", existing.token)
+            return redirect(url_for("purchase.purchase_status", token=existing.token))
+
+
         # =========================================================
         # CASO A — RESERVA SIMPLES (não exige ingresso)
         # =========================================================
