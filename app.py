@@ -21,7 +21,7 @@ from routes.admin_settings import bp_admin_settings
 from routes.admin_purchases import bp_admin_purchases
 from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
-
+from routes.home import bp_home
 
 
 load_dotenv()  # local ok; no Render as env vars vêm do painel
@@ -61,6 +61,7 @@ def create_app() -> Flask:
         return redirect(url_for("purchase.buy", event_slug=default_slug))
 
     # Blueprints
+    app.register_blueprint(bp_home)
     app.register_blueprint(bp_purchase)
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)

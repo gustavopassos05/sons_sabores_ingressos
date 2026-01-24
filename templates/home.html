@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <div class="mb-6">
+    <h1 class="text-2xl sm:text-3xl font-semibold">{{ app_name }}</h1>
+    <p class="text-sm text-zinc-500 mt-1">
+      Escolha a atração e faça sua reserva.
+    </p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for c in cards %}
+      <div class="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col">
+        <div class="aspect-[16/9] bg-zinc-100 overflow-hidden">
+          <img
+            src="{{ c.img }}"
+            alt="{{ c.name }}"
+            class="w-full h-full object-cover"
+            onerror="this.onerror=null;this.src='{{ url_for('static', filename='shows/placeholder.jpg') }}';"
+          />
+        </div>
+
+        <div class="p-4 flex-1 flex flex-col gap-2">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-lg font-semibold leading-tight">{{ c.name }}</div>
+              <div class="text-sm text-zinc-500">{{ c.subtitle }}</div>
+            </div>
+
+            {% if c.date_text %}
+              <div class="text-xs text-zinc-600 bg-zinc-100 rounded-full px-3 py-1 whitespace-nowrap">
+                {{ c.date_text }}
+              </div>
+            {% endif %}
+          </div>
+
+          <p class="text-sm text-zinc-700 leading-relaxed">
+            {{ c.desc }}
+          </p>
+
+          <div class="mt-2 text-xs text-zinc-500">
+            {% if c.requires_ticket == 0 %}
+              Reserva (sem ingresso)
+            {% else %}
+              {% if c.price_cents is none %}
+                Preço em definição
+              {% else %}
+                Ingresso: R$ {{ '%.2f'|format((c.price_cents or 0)/100) }}
+              {% endif %}
+            {% endif %}
+          </div>
+
+          <div class="mt-4">
+            <a
+              href="{{ url_for('purchase.buy', event_slug=event.slug) }}"
+              class="inline-flex w-full justify-center rounded-xl bg-black text-white py-3 font-medium hover:opacity-90"
+            >
+              Reservar agora
+            </a>
+          </div>
+
+          <div class="text-xs text-zinc-400 text-center">
+            Você será direcionado(a) para o formulário de reserva.
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
