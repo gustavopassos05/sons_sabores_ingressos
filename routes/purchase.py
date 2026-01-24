@@ -268,6 +268,7 @@ def buy_post(event_slug: str):
                         purchase.token,
                         e,
                     )
+            flash("Reserva enviada ✅ Já já você recebe a confirmação por e-mail.", "success")
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 

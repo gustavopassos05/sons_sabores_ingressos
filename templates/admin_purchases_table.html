@@ -15,7 +15,19 @@
     </form>
   </div>
 
-  <div class="rounded-xl border divide-y">
+  <div class="rounded-xl border bg-white divide-y">
+
+    {# ✅ Cabeçalho/descrição das colunas (desktop) #}
+    <div class="hidden md:grid grid-cols-7 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
+      <div>Show</div>
+      <div>Comprador</div>
+      <div>Data / Token</div>
+      <div>Contato</div>
+      <div>Pagamento</div>
+      <div>Links / E-mail</div>
+      <div>Ações</div>
+    </div>
+
     {% for row in rows %}
       {% set p = row.purchase %}
       {% set pay = row.payment %}
@@ -43,7 +55,7 @@
 
         <!-- Data -->
         <div>
-          <div class="text-xs text-zinc-400 md:hidden">Data</div>
+          <div class="text-xs text-zinc-400 md:hidden">Data / Token</div>
           <div class="font-medium">
             {% if p.created_at %}{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
           </div>
@@ -70,26 +82,52 @@
           <div class="flex items-center gap-2">
             {% if status|lower == 'paid' %}
               <span class="inline-block rounded-full bg-green-100 text-green-800 text-xs px-2 py-1">Pago</span>
+            {% elif status|lower == 'n/d' %}
+              <span class="inline-block rounded-full bg-zinc-100 text-zinc-700 text-xs px-2 py-1">n/d</span>
             {% else %}
               <span class="inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-1">{{ status }}</span>
             {% endif %}
           </div>
           {% if provider %}<div class="text-xs text-zinc-500 mt-1">{{ provider }}</div>{% endif %}
           <div class="text-xs text-zinc-500 mt-1">Total: <span class="font-semibold">R$ {{ '%.2f'|format(total) }}</span></div>
+
+          {# ✅ Status de envio do e-mail de ingressos (se existir payment) #}
+          {% if pay and pay.tickets_email_sent_at %}
+            <div class="text-xs text-green-700 mt-2">
+              📧 Enviado: {{ pay.tickets_email_sent_at.strftime('%d/%m %H:%M') }}
+            </div>
+            <div class="text-xs text-zinc-500 break-all">
+              Para: {{ pay.tickets_email_sent_to }}
+            </div>
+          {% else %}
+            <div class="text-xs text-zinc-500 mt-2">📧 Não enviado</div>
+          {% endif %}
+
+          {% if pay and pay.tickets_email_last_error %}
+            <div class="text-xs text-red-700 mt-1 break-all">
+              Erro: {{ pay.tickets_email_last_error }}
+            </div>
+          {% endif %}
         </div>
 
         <!-- Links -->
         <div class="flex flex-col gap-2">
+          <div class="text-xs text-zinc-400 md:hidden">Links / E-mail</div>
+
           {% if pdf_all %}
             <a href="{{ pdf_all }}" target="_blank" class="rounded-xl border px-3 py-2 text-xs text-center hover:bg-zinc-50">
               PDF (todos)
             </a>
+          {% else %}
+            <div class="text-xs text-zinc-400">PDF —</div>
           {% endif %}
 
           {% if zip_all %}
             <a href="{{ zip_all }}" target="_blank" class="rounded-xl border px-3 py-2 text-xs text-center hover:bg-zinc-50">
               ZIP (todos)
             </a>
+          {% else %}
+            <div class="text-xs text-zinc-400">ZIP —</div>
           {% endif %}
 
           <button type="button"
@@ -97,6 +135,7 @@
                   onclick="copyText('{{ zip_all or pdf_all or '' }}')">
             Copiar link
           </button>
+
           {% if p.buyer_email %}
             <form method="post" action="{{ url_for('admin_purchases.admin_send_purchase_email_buyer', purchase_id=p.id) }}">
               <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
@@ -106,12 +145,12 @@
           {% else %}
             <div class="text-xs text-zinc-400">Sem e-mail do comprador</div>
           {% endif %}
-
-
         </div>
 
         <!-- Ações -->
         <div class="flex flex-col gap-2">
+          <div class="text-xs text-zinc-400 md:hidden">Ações</div>
+
           {% if status|lower != 'paid' %}
             <button type="button"
                     class="rounded-xl bg-black text-white px-3 py-2 text-xs"
@@ -119,28 +158,19 @@
               Confirmar pagamento
             </button>
           {% endif %}
+
+          {# ✅ Excluir compra #}
+          <form method="post"
+                action="{{ url_for('admin_delete.delete_purchase', token=p.token, next=request.full_path) }}"
+                onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
+            <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+              Excluir compra
+            </button>
+          </form>
         </div>
 
       </div>
-
     {% endfor %}
-    {% if pay and pay.tickets_email_sent_at %}
-      <div class="text-xs text-green-700 mt-1">
-        📧 Enviado: {{ pay.tickets_email_sent_at.strftime('%d/%m %H:%M') }}
-      </div>
-      <div class="text-xs text-zinc-500 break-all">
-        Para: {{ pay.tickets_email_sent_to }}
-      </div>
-    {% else %}
-      <div class="text-xs text-zinc-500 mt-1">📧 Não enviado</div>
-    {% endif %}
-
-    {% if pay and pay.tickets_email_last_error %}
-      <div class="text-xs text-red-700 mt-1 break-all">
-        Erro: {{ pay.tickets_email_last_error }}
-      </div>
-    {% endif %}
-
 
     {% if rows|length == 0 %}
       <div class="p-6 text-center text-zinc-500">Nenhuma compra encontrada.</div>
