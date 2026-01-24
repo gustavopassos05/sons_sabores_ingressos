@@ -115,12 +115,13 @@
           {% endif %}
 
           <form method="post"
-                action="{{ url_for('admin_delete.delete_purchase', token=p.token) }}"
-                onsubmit="return confirm('Excluir esta compra? Isso apaga pagamentos e ingressos.');">
+                action="{{ url_for('admin_delete.delete_purchase', token=p.token, next=request.full_path) }}"
+                onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
             <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-              Excluir
+              Excluir compra
             </button>
           </form>
+
 
         </div>
 

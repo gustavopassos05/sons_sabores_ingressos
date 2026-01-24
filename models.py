@@ -15,6 +15,7 @@ class Event(Base):
 
     tickets: Mapped[list["Ticket"]] = relationship(back_populates="event")
 
+
 class Purchase(Base):
     __tablename__ = "purchases"
 
@@ -31,15 +32,22 @@ class Purchase(Base):
     buyer_phone: Mapped[str] = mapped_column(String(40), nullable=True)
     buyer_cpf: Mapped[str] = mapped_column(String(30), nullable=True)
     buyer_cpf_digits: Mapped[str] = mapped_column(String(14), nullable=True)  # ✅ ADD AQUI
+
     ticket_qty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     ticket_unit_price_cents: Mapped[int] = mapped_column(Integer, default=5000, nullable=False)
+
     reservation_confirmed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    # ✅ e-mail enviado quando ADMIN confirma a reserva (status -> reserved)
     reservation_email_sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     reservation_email_sent_to: Mapped[str] = mapped_column(String(200), nullable=True)
     reservation_email_last_error: Mapped[str] = mapped_column(Text, nullable=True)
 
-
-
+    # ✅ NOVO: e-mail enviado quando a reserva é REGISTRADA (no POST /buy/...),
+    # antes do admin confirmar (status reservation_pending / reservation_pending_price)
+    reservation_received_email_sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    reservation_received_email_sent_to: Mapped[str] = mapped_column(String(200), nullable=True)
+    reservation_received_email_last_error: Mapped[str] = mapped_column(Text, nullable=True)
 
     guests_text: Mapped[str] = mapped_column(Text, nullable=True)
 
@@ -112,6 +120,7 @@ class Payment(Base):
     tickets_zip_url: Mapped[str] = mapped_column(String(500), nullable=True)
     tickets_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
+
 class AdminSetting(Base):
     __tablename__ = "admin_settings"
     __table_args__ = (UniqueConstraint("key", name="uq_admin_settings_key"),)
@@ -119,6 +128,7 @@ class AdminSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String(80), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=True)
+
 
 class Show(Base):
     __tablename__ = "shows"
@@ -130,4 +140,3 @@ class Show(Base):
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     requires_ticket: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-

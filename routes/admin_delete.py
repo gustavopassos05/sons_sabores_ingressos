@@ -6,12 +6,14 @@ from sqlalchemy import select
 
 from db import db
 from models import Purchase, Payment, Ticket
+from routes.admin_auth import admin_required  # ✅ importante proteger
+
 
 bp_admin_delete = Blueprint("admin_delete", __name__, url_prefix="/admin")
 
 
 def _safe_next(next_url: str) -> str:
-    """Permite somente redirects internos (sem scheme/netloc)."""
+    """Permite apenas redirects internos (sem scheme/netloc)."""
     if not next_url:
         return ""
     u = urlparse(next_url)
@@ -21,6 +23,7 @@ def _safe_next(next_url: str) -> str:
 
 
 @bp_admin_delete.post("/delete-purchase/<token>")
+@admin_required
 def delete_purchase(token):
     with db() as s:
         purchase = s.scalar(select(Purchase).where(Purchase.token == token))
@@ -44,10 +47,13 @@ def delete_purchase(token):
     flash("Compra excluída com sucesso.", "success")
 
     next_url = _safe_next(request.args.get("next", ""))
-    return redirect(next_url or url_for("admin_tickets.admin_tickets"))
+
+    # ✅ fallback CORRETO (se next não vier)
+    return redirect(next_url or url_for("admin_pending.admin_pending"))
 
 
 @bp_admin_delete.post("/delete-ticket/<int:ticket_id>")
+@admin_required
 def delete_ticket(ticket_id):
     with db() as s:
         ticket = s.get(Ticket, ticket_id)
@@ -60,4 +66,6 @@ def delete_ticket(ticket_id):
     flash("Ingresso excluído com sucesso.", "success")
 
     next_url = _safe_next(request.args.get("next", ""))
-    return redirect(next_url or url_for("admin_tickets.admin_tickets"))
+
+    # ✅ fallback CORRETO (ajuste para o seu endpoint real)
+    return redirect(next_url or url_for("admin_tickets.admin_tickets_table"))

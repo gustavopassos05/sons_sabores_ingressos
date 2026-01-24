@@ -50,6 +50,19 @@ def _emails_from_env(var_name: str) -> list[str]:
     parts = [p.strip() for p in raw.replace(";", ",").split(",")]
     return [p for p in parts if p]
 
+def _status_label(st: str) -> str:
+    st = (st or "").lower().strip()
+    labels = {
+        "reservation_pending": "Reserva registrada (aguardando confirmação)",
+        "reservation_pending_price": "Reserva registrada (preço em definição)",
+        "reserved": "Reserva confirmada ✅",
+        "pending_payment": "Aguardando pagamento (Pix)",
+        "paid": "Pagamento confirmado ✅",
+        "failed": "Falhou / expirou",
+        "cancelled": "Cancelado",
+    }
+    return labels.get(st, st or "—")
+
 
 def send_reservation_notification(purchase: Purchase) -> None:
     """
@@ -68,7 +81,7 @@ def send_reservation_notification(purchase: Purchase) -> None:
     body = (
         "Nova reserva criada no site ✅\n\n"
         f"Show: {purchase.show_name}\n"
-        f"Status: {purchase.status}\n"
+        f"Andamento: {_status_label(purchase.status)}\n"
         f"Comprador: {purchase.buyer_name}\n"
         f"CPF: {getattr(purchase, 'buyer_cpf', '')}\n"
         f"Email: {getattr(purchase, 'buyer_email', '')}\n"
@@ -257,11 +270,14 @@ def buy_post(event_slug: str):
             s.add(purchase)
             s.commit()
 
+            # ✅ EMAIL INTERNO
             send_reservation_notification(purchase)
 
             if buyer_email and "@" in buyer_email:
-                guests = [g.strip() for g in guests_lines if g.strip()]
-                status_url = f"{base_url}/status/{purchase.token}"
+                guests = [g.strip() for g in (guests_lines or []) if g.strip()]
+
+                base = (os.getenv("BASE_URL") or "").strip().rstrip("/")
+                status_url = f"{base}/status/{purchase.token}" if base else ""
 
                 subject, text, html = build_reservation_received_email(
                     buyer_name=buyer_name,
@@ -270,9 +286,10 @@ def buy_post(event_slug: str):
                     token=purchase.token,
                     ticket_qty=total_people,
                     status_url=status_url,
-                    price_pending=True,
+                    price_pending=(purchase.status == "reservation_pending_price"),
                     guests=guests,
                 )
+
                 try:
                     send_email(
                         to_email=buyer_email,
@@ -280,12 +297,26 @@ def buy_post(event_slug: str):
                         body_text=text,
                         body_html=html,
                     )
+
+                    # ✅ registra envio com sucesso
+                    purchase.reservation_received_email_sent_at = datetime.utcnow()
+                    purchase.reservation_received_email_sent_to = buyer_email
+                    purchase.reservation_received_email_last_error = None
+                    s.add(purchase)
+                    s.commit()
+
                     current_app.logger.info(
                         "[RESERVATION RECEIVED EMAIL] sent token=%s to=%s",
                         purchase.token,
                         buyer_email,
                     )
+
                 except Exception as e:
+                    # ❌ registra erro
+                    purchase.reservation_received_email_last_error = str(e)[:2000]
+                    s.add(purchase)
+                    s.commit()
+
                     current_app.logger.warning(
                         "[RESERVATION RECEIVED EMAIL] failed token=%s err=%s",
                         purchase.token,
