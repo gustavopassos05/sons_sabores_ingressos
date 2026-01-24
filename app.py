@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for
+from flask import Flask
 
 from models import Base
 from db import engine
@@ -23,9 +23,7 @@ from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
 from routes.home import bp_home
 
-
-load_dotenv()  # local ok; no Render as env vars vêm do painel
-
+load_dotenv()
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -34,7 +32,7 @@ def create_app() -> Flask:
     app.config["APP_NAME"] = os.getenv("APP_NAME", "Sons & Sabores · Ingressos")
     app.config["BASE_URL"] = (os.getenv("BASE_URL", "http://127.0.0.1:5005") or "").rstrip("/")
 
-    # ✅ NO RENDER, use /tmp (plano free não tem disk)
+    # storage
     storage_default = "/tmp/sons_sabores_ingressos_storage"
     app.config["STORAGE_DIR"] = Path(os.getenv("STORAGE_DIR", storage_default)).resolve()
 
@@ -42,26 +40,11 @@ def create_app() -> Flask:
         os.getenv("TICKET_BASE_IMAGE_PATH", "static/ticket_base.png")
     ).resolve()
 
-    app.config["SHOWS"] = [
-        "Jimmy Duchowny e Mark Lambert",
-        "Rodrigo Quintela",
-        "Alexandre Araújo",
-        "Thiago Delegado",
-        "Hudson de Souza",
-        "Alexandre Rezende",
-        "Marilton",
-    ]
-
-    # ✅ cria tabelas
+    # cria tabelas
     Base.metadata.create_all(engine)
 
-    @app.get("/")
-    def home():
-        default_slug = os.getenv("DEFAULT_EVENT_SLUG", "sons-e-sabores")
-        return redirect(url_for("purchase.buy", event_slug=default_slug))
-
-    # Blueprints
-    app.register_blueprint(bp_home)
+    # ✅ BLUEPRINTS
+    app.register_blueprint(bp_home)        # ← AGORA ESSA É A HOME REAL
     app.register_blueprint(bp_purchase)
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)
@@ -76,12 +59,9 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_delete)
     app.register_blueprint(bp_admin_shows)
 
-
-
-    # ✅ pluga o finalizador (webhook usa isso)
+    # finalizador
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
 
     return app
-
 
 app = create_app()
