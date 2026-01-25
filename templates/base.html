@@ -13,7 +13,17 @@
   <!-- Header -->
   <header class="bg-white shadow-sm">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <a href="/" class="font-semibold text-lg">Sons & Sabores</a>
+      <a href="/" class="flex items-center gap-3">
+        <img
+          src="{{ url_for('static', filename='imagens/logo-sons-e-sabores-preto.png') }}"
+          alt="Sons & Sabores"
+          class="h-8 w-auto"
+        />
+        <span class="font-semibold text-lg leading-none">
+          Sons & Sabores
+        </span>
+      </a>
+
 
       <nav class="flex items-center gap-3 text-sm">
         {% if session.get("is_admin") %}
