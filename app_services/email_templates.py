@@ -240,6 +240,7 @@ def build_reservation_email(
     """
     return subject, text, html
 
+from typing import Optional
 
 def build_reservation_received_email(
     *,
@@ -251,17 +252,56 @@ def build_reservation_received_email(
     status_url: str = "",
     price_pending: bool = False,
     guests: Optional[list[str]] = None,
+    unit_price_cents: Optional[int] = None,  # ✅ NOVO
 ) -> tuple[str, str, str]:
     """
     E-mail de RESERVA REGISTRADA (status: reservation_pending / reservation_pending_price).
     Linguagem Borogodó + HTML bonito.
     Retorna: (subject, text, html)
+
+    unit_price_cents:
+      - None: não mostra valores (a menos que você queira)
+      - 0: reserva sem pagamento
+      - >0: mostra "Ingressos: qty × R$ xx,xx" e Total
     """
     subject = f"Reserva registrada ✅ — {show_name}"
 
     if not status_url:
         base = _base_url()
         status_url = f"{base}/status/{token}" if base else ""
+
+    guests = guests or []
+
+    # --------- helpers BRL ----------
+    def _fmt_brl_from_cents(cents: int) -> str:
+        # 12345 -> "123,45"
+        return f"{(cents / 100):.2f}".replace(".", ",")
+
+    price_line_text = ""
+    total_line_text = ""
+    price_line_html = ""
+    total_line_html = ""
+
+    if price_pending:
+        # não exibe valores
+        pass
+    else:
+        if unit_price_cents is None:
+            # se não passar unit_price_cents, não mostra valores
+            pass
+        elif int(unit_price_cents) <= 0:
+            price_line_text = "💳 Valor: Reserva (sem pagamento)"
+            price_line_html = '<div>💳 <b>Valor:</b> Reserva (sem pagamento)</div>'
+        else:
+            unit_str = _fmt_brl_from_cents(int(unit_price_cents))
+            total_cents = int(unit_price_cents) * int(ticket_qty or 0)
+            total_str = _fmt_brl_from_cents(total_cents)
+
+            price_line_text = f"💳 Ingressos: {ticket_qty} × R$ {unit_str}"
+            total_line_text = f"💰 Total: R$ {total_str}"
+
+            price_line_html = f"<div>💳 <b>Ingressos:</b> {ticket_qty} × R$ {unit_str}</div>"
+            total_line_html = f"<div>💰 <b>Total:</b> R$ {total_str}</div>"
 
     # =============== TEXTO (fallback) ===============
     lines = []
@@ -271,6 +311,12 @@ def build_reservation_received_email(
     lines.append("")
     lines.append(f"🎷 Show: {show_name}")
     lines.append(f"👥 Pessoas: {ticket_qty}")
+
+    if price_line_text:
+        lines.append(price_line_text)
+    if total_line_text:
+        lines.append(total_line_text)
+
     lines.append(f"🔎 Token da reserva: {token}")
 
     if guests:
@@ -333,6 +379,18 @@ def build_reservation_received_email(
           </div>
         """
 
+    price_block_html = ""
+    if (price_line_html or total_line_html) and (not price_pending):
+        price_block_html = f"""
+          <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;background:#fafafa;">
+            <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">Valores</div>
+            <div style="font-size:14px;color:#111827;line-height:1.6;">
+              {price_line_html}
+              {total_line_html}
+            </div>
+          </div>
+        """
+
     html = f"""<!doctype html>
 <html lang="pt-BR">
   <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
@@ -352,7 +410,6 @@ def build_reservation_received_email(
         <div style="padding:0 22px 18px 22px;">
           <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px 14px;background:#fafafa;">
             <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Detalhes</div>
-
             <div style="font-size:15px;color:#111827;line-height:1.6;">
               <div>🎷 <b>Show:</b> {show_name}</div>
               <div>👥 <b>Pessoas:</b> {ticket_qty}</div>
@@ -362,6 +419,7 @@ def build_reservation_received_email(
             </div>
           </div>
 
+          {price_block_html}
           {guests_block}
           {optional_price_block}
 

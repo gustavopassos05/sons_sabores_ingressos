@@ -291,6 +291,7 @@ def buy_post(event_slug: str):
                     status_url=status_url,
                     price_pending=True,
                     guests=guests,
+                    unit_price_cents=purchase.ticket_unit_price_cents,
                 )
                 try:
                     send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
