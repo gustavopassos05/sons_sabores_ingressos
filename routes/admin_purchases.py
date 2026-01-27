@@ -110,10 +110,13 @@ def admin_send_purchase_email(purchase_id: int):
         show_name=purchase.show_name or "Sons & Sabores",
         total_brl=((payment.amount_cents or 0) / 100) if payment else 0.0,
         token=purchase.token,
+        ticket_qty=int(purchase.ticket_qty or len(tickets) or 1),                 # ✅
+        unit_price_cents=int(purchase.ticket_unit_price_cents or 0),              # ✅
         pdf_all_url=pdf_all_url,
         zip_url=zip_url,
         tickets=ticket_rows,
     )
+
 
     try:
         send_email(
@@ -192,11 +195,13 @@ def admin_send_purchase_email_buyer(purchase_id: int):
         show_name=purchase.show_name or "Sons & Sabores",
         total_brl=((payment.amount_cents or 0) / 100) if payment else 0.0,
         token=purchase.token,
-        ticket_qty=len(tickets),
+        ticket_qty=int(purchase.ticket_qty or len(tickets) or 1),                 # ✅
+        unit_price_cents=int(purchase.ticket_unit_price_cents or 0),              # ✅
         pdf_all_url=pdf_all_url,
         zip_url=zip_url,
         tickets=ticket_rows,
     )
+
 
     try:
         send_email(to_email=to_email, subject=subject, body_text=text, body_html=html)

@@ -23,6 +23,10 @@ def _fmt_brl_from_cents(cents: int) -> str:
 def _base_url() -> str:
     return (os.getenv("BASE_URL") or "").strip().rstrip("/")
 
+from typing import List, Dict, Optional
+
+def _fmt_brl_from_cents(cents: int) -> str:
+    return f"{(cents / 100):.2f}".replace(".", ",")
 
 def build_tickets_email(
     *,
@@ -31,6 +35,7 @@ def build_tickets_email(
     total_brl: float,
     token: str,
     ticket_qty: int,
+    unit_price_cents: Optional[int] = None,     # ✅ NOVO (preço do show na compra)
     pdf_all_url: str = "",
     zip_url: str = "",
     tickets: Optional[List[Dict[str, str]]] = None,  # [{name, pdf, png}]
@@ -38,13 +43,18 @@ def build_tickets_email(
     """
     Retorna: (subject, text, html)
 
-    - Valor unitário vem de ENV: TICKET_PRICE_CENTS (ex: 5000)
-    - HTML mobile-first (botões grandes, coluna única)
+    ✅ CORREÇÃO:
+    - Preço unitário NÃO vem mais da ENV.
+    - Usa unit_price_cents (ideal: purchase.ticket_unit_price_cents).
+    - ticket_qty deve ser purchase.ticket_qty (ou len(tickets) se for igual).
     """
-    unit_cents = _unit_price_cents_from_env(5000)
-    unit_brl_str = _fmt_brl_from_cents(unit_cents)
 
     subject = f"Ingressos Sons & Sabores — {show_name}"
+
+    # preço unitário
+    unit_price_cents = int(unit_price_cents or 0)
+    unit_brl_str = _fmt_brl_from_cents(unit_price_cents) if unit_price_cents > 0 else "0,00"
+    total_brl_str = f"{total_brl:.2f}".replace(".", ",")
 
     # ======================
     # TEXTO (fallback)
@@ -56,7 +66,7 @@ def build_tickets_email(
     lines.append("")
     lines.append(f"Show: {show_name}")
     lines.append(f"Ingressos: {ticket_qty} × R$ {unit_brl_str}")
-    lines.append(f"Total: R$ {total_brl:.2f}")
+    lines.append(f"Total: R$ {total_brl_str}")
     lines.append(f"Token da compra: {token}")
     lines.append("")
 
@@ -95,8 +105,6 @@ def build_tickets_email(
 
     def link(url: str, label: str) -> str:
         return f'<a href="{url}" target="_blank" style="color:#111;text-decoration:underline;">{label}</a>'
-
-    total_brl_str = f"{total_brl:.2f}".replace(".", ",")
 
     html = f"""
 <div style="font-family: Arial, sans-serif; background:#f4f4f5; padding:16px;">
@@ -161,7 +169,6 @@ def build_tickets_email(
 </div>
 """
     return subject, text, html
-
 
 def build_reservation_email(
     *,
