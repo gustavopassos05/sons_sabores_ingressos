@@ -1,5 +1,11 @@
 # Exemplo simples (ajuste conforme seu webhooks.py)
 from flask import request
+# routes/webhooks.py
+from flask import Blueprint, request, current_app
+
+bp_webhooks = Blueprint("webhooks", __name__)
+
+# (Se tiver outros webhooks aqui, ficam abaixo)
 
 @bp_webhooks.post("/webhooks/mercadopago")
 def mp_webhook():
