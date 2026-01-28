@@ -114,7 +114,10 @@
             </button>
           {% endif %}
 
+          {% set purchase = row.purchase %}
+          {% set payment = row.payment %}
           {% set st = (purchase.status or '').lower() %}
+
           {% if st in ['reservation_pending', 'reservation_pending_price', 'pending_payment'] %}
             <form method="post"
                   action="{{ url_for('admin_pending.admin_reject', token=purchase.token) }}"
