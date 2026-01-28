@@ -341,7 +341,9 @@ def buy_post(event_slug: str):
         )
         s.add(payment)
         s.commit()
-
+        # ✅ NOVO: avisar admin também quando está pendente de pagamento
+        send_reservation_notification(purchase)
+        
         return redirect(url_for("purchase.pay_manual", token=purchase.token))
 
 # ---------------------------
