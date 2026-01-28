@@ -343,7 +343,7 @@ def buy_post(event_slug: str):
         s.commit()
         # ✅ NOVO: avisar admin também quando está pendente de pagamento
         send_reservation_notification(purchase)
-        
+
         return redirect(url_for("purchase.pay_manual", token=purchase.token))
 
 # ---------------------------
@@ -494,3 +494,4 @@ def purchase_status(token: str):
         payment=payment,
         app_name=os.getenv("APP_NAME", "Sons & Sabores"),
     )
+

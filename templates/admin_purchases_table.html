@@ -170,6 +170,18 @@
         </div>
 
       </div>
+          {% if purchase.status not in ["paid", "cancelled"] %}
+          <form method="post"
+                action="{{ url_for('admin_purchases.reject_purchase', purchase_id=purchase.id) }}"
+                onsubmit="return confirm('Tem certeza que deseja rejeitar esta reserva?');">
+
+            <button type="submit"
+                    class="rounded-xl bg-red-600 text-white px-3 py-2 text-sm hover:bg-red-700">
+              Rejeitar reserva
+            </button>
+          </form>
+          {% endif %}
+
     {% endfor %}
 
     {% if rows|length == 0 %}

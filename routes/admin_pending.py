@@ -184,3 +184,27 @@ def admin_mark_paid(purchase_token: str):
         finalize_fn(purchase_id)
 
     return {"ok": True}
+
+@bp_admin_pending.post("/admin/reject/<token>")
+@admin_required
+def admin_reject(token: str):
+    with db() as s:
+        purchase = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not purchase:
+            abort(404)
+
+        st = (purchase.status or "").lower()
+
+        # só rejeita se estiver pendente
+        if st in {"paid", "cancelled"}:
+            flash("Esta compra/reserva não pode ser rejeitada.", "error")
+            return redirect(url_for("admin_pending.admin_pending"))
+
+        purchase.status = "cancelled"
+        # se você quiser registrar data/hora, crie o campo no model (opcional)
+        # purchase.cancelled_at = datetime.utcnow()
+        s.add(purchase)
+        s.commit()
+
+    flash("Reserva rejeitada ❌", "success")
+    return redirect(url_for("admin_pending.admin_pending"))

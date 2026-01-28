@@ -114,6 +114,19 @@
             </button>
           {% endif %}
 
+          {% set st = (purchase.status or '').lower() %}
+          {% if st in ['reservation_pending', 'reservation_pending_price', 'pending_payment'] %}
+            <form method="post"
+                  action="{{ url_for('admin_pending.admin_reject', token=purchase.token) }}"
+                  onsubmit="return confirm('Rejeitar esta reserva?');">
+              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
+                Rejeitar reserva
+              </button>
+            </form>
+          {% endif %}
+
+
+
           <form method="post"
                 action="{{ url_for('admin_delete.delete_purchase', token=p.token, next=request.full_path) }}"
                 onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
