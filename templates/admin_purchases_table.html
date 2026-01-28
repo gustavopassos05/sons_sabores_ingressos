@@ -170,7 +170,9 @@
         </div>
 
       </div>
-          {% if purchase.status not in ["paid", "cancelled"] %}
+          {% set purchase = row.purchase %}
+          {% set payment = row.payment %}
+          {% set st = (purchase.status or '').lower() %}
           <form method="post"
                 action="{{ url_for('admin_purchases.reject_purchase', purchase_id=purchase.id) }}"
                 onsubmit="return confirm('Tem certeza que deseja rejeitar esta reserva?');">
