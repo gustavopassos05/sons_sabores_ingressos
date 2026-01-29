@@ -5,24 +5,72 @@
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
       <h2 class="text-xl font-semibold">Reservas confirmadas</h2>
-      <p class="text-sm text-zinc-500">Somente status <b>reserved</b>.</p>
+      <p class="text-sm text-zinc-500">Somente status <b>reserved</b> (sem pagamento).</p>
     </div>
 
-    <form method="get" class="flex gap-2">
-      <input name="q" value="{{ q }}" class="w-full sm:w-80 rounded-xl border p-3 text-sm"
-             placeholder="Buscar por nome, CPF, show, token…">
-      <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
+    <form method="get" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+      <input name="q" value="{{ q }}" class="w-full sm:w-72 rounded-xl border p-3 text-sm"
+             placeholder="Buscar por nome, CPF, token…">
+
+      <select name="show" class="w-full sm:w-72 rounded-xl border p-3 text-sm">
+        <option value="">Todos os shows</option>
+        {% for sh in show_options %}
+          <option value="{{ sh }}" {% if show_selected == sh %}selected{% endif %}>{{ sh }}</option>
+        {% endfor %}
+      </select>
+
+      <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">Filtrar</button>
+
+      {% if show_selected %}
+        <a href="{{ url_for('admin_reservations.admin_reservations_portaria_pdf', show=show_selected, q=q) }}"
+           class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+          Portaria (PDF)
+        </a>
+      {% else %}
+        <span class="rounded-xl border px-4 py-3 text-sm text-zinc-400 text-center cursor-not-allowed">
+          Portaria (PDF) — selecione um show
+        </span>
+      {% endif %}
     </form>
   </div>
 
   <div class="rounded-xl border divide-y">
+    <div class="hidden md:grid grid-cols-5 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
+      <div>Show</div>
+      <div>Comprador</div>
+      <div>Pessoas</div>
+      <div>Data da reserva</div>
+      <div>Token</div>
+    </div>
+
     {% for p in rows %}
       <div class="p-4 text-sm grid grid-cols-1 md:grid-cols-5 gap-3">
-        <div><b>Show:</b><br>{{ p.show_name }}</div>
-        <div><b>Comprador:</b><br>{{ p.buyer_name }}</div>
-        <div><b>CPF:</b><br>{{ p.buyer_cpf or "—" }}</div>
-        <div><b>Telefone:</b><br>{{ p.buyer_phone or "—" }}</div>
-        <div><b>Token:</b><br><span class="break-all">{{ p.token }}</span></div>
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Show</div>
+          {{ p.show_name }}
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Comprador</div>
+          <div class="font-medium">{{ p.buyer_name }}</div>
+          <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf or "—" }}</div>
+          <div class="text-xs text-zinc-500">Tel: {{ p.buyer_phone or "—" }}</div>
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoas</div>
+          {{ p.ticket_qty or 1 }}
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Data da reserva</div>
+          {% if p.created_at %}{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Token</div>
+          <span class="break-all">{{ p.token }}</span>
+        </div>
       </div>
     {% endfor %}
 
