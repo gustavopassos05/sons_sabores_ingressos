@@ -8,16 +8,28 @@
       <p class="text-sm text-zinc-500">Visão por compra (PDF/ZIP + confirmação manual).</p>
     </div>
 
-    <form method="get" class="flex gap-2">
-      <input name="q" value="{{ q }}" class="w-full sm:w-80 rounded-xl border p-3 text-sm"
-             placeholder="Buscar por nome, CPF, show, token…">
-      <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
-    </form>
+    <div class="flex flex-col sm:flex-row gap-2">
+      <form method="get" class="flex gap-2">
+        <input name="q" value="{{ q }}" class="w-full sm:w-80 rounded-xl border p-3 text-sm"
+               placeholder="Buscar por nome, CPF, show, token…">
+        <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
+      </form>
+
+      <!-- ✅ Exportar CSV -->
+      <a href="{{ url_for('admin_purchases.admin_purchases_export_csv', q=q) }}"
+         class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+        Exportar CSV
+      </a>
+      <a href="{{ url_for('admin_purchases.admin_purchases_summary') }}"
+         class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+        Resumo por show
+      </a>
+
+    </div>
   </div>
 
   <div class="rounded-xl border bg-white divide-y">
 
-    {# ✅ Cabeçalho/descrição das colunas (desktop) #}
     <div class="hidden md:grid grid-cols-7 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
       <div>Show</div>
       <div>Comprador</div>
@@ -91,7 +103,6 @@
           {% if provider %}<div class="text-xs text-zinc-500 mt-1">{{ provider }}</div>{% endif %}
           <div class="text-xs text-zinc-500 mt-1">Total: <span class="font-semibold">R$ {{ '%.2f'|format(total) }}</span></div>
 
-          {# ✅ Status de envio do e-mail de ingressos (se existir payment) #}
           {% if pay and pay.tickets_email_sent_at %}
             <div class="text-xs text-green-700 mt-2">
               📧 Enviado: {{ pay.tickets_email_sent_at.strftime('%d/%m %H:%M') }}
@@ -159,7 +170,6 @@
             </button>
           {% endif %}
 
-          {# ✅ Excluir compra #}
           <form method="post"
                 action="{{ url_for('admin_delete.delete_purchase', token=p.token, next=request.full_path) }}"
                 onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
@@ -170,20 +180,6 @@
         </div>
 
       </div>
-          {% set purchase = row.purchase %}
-          {% set payment = row.payment %}
-          {% set st = (purchase.status or '').lower() %}
-
-          {% if st in ['reservation_pending', 'reservation_pending_price', 'pending_payment'] %}
-            <form method="post"
-                  action="{{ url_for('admin_pending.admin_reject', token=purchase.token) }}"
-                  onsubmit="return confirm('Rejeitar esta reserva?');">
-              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-                Rejeitar reserva
-              </button>
-            </form>
-          {% endif %}
-
     {% endfor %}
 
     {% if rows|length == 0 %}
