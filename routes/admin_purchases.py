@@ -1,6 +1,6 @@
 # routes/admin_purchases.py
 from datetime import datetime
-
+from zoneinfo import ZoneInfo
 from flask import Blueprint, render_template, request, abort, flash, redirect, url_for
 from sqlalchemy import select, desc, func
 import csv
@@ -16,6 +16,10 @@ from app_services.email_templates import build_tickets_email
 
 bp_admin_purchases = Blueprint("admin_purchases", __name__)
 
+SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
+
+def now_sp():
+    return datetime.now(SAO_PAULO_TZ).replace(tzinfo=None)
 
 @bp_admin_purchases.get("/admin/purchases")
 @admin_required
@@ -256,7 +260,6 @@ def admin_purchases_export_csv():
 
         rows = []
         for p, pay in pairs:
-            # filtro show (por nome)
             if show_filter and show_filter not in (p.show_name or "").lower():
                 continue
 
