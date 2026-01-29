@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-6xl mx-auto">
+<div class="max-w-6xl mx-auto px-4">
 
   <div class="bg-white rounded-2xl shadow p-4 mb-4">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -10,13 +10,15 @@
       </div>
 
       <div class="flex flex-wrap gap-2 items-center">
+        <!-- Dashboard -->
         <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
            href="{{ url_for('admin_panel.home') }}">
           Dashboard
         </a>
 
+        <!-- Pendências -->
         <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
-           href="/admin/pending">
+           href="{{ url_for('admin_pending.admin_pending') }}">
           Pendências
           {% if admin_pending_count and admin_pending_count > 0 %}
             <span class="ml-2 inline-block text-xs bg-black text-white rounded-full px-2 py-0.5">
@@ -25,23 +27,37 @@
           {% endif %}
         </a>
 
+        <!-- Ingressos -->
         <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
-           href="/admin/tickets">
+           href="{{ url_for('admin_tickets.admin_tickets_table') }}">
           Ingressos
         </a>
-        <a href="/admin/purchases" class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50">
+
+        <!-- Compras (pagas) -->
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="{{ url_for('admin_purchases.admin_purchases_table') }}">
+          Compras
+        </a>
+
+        <!-- Reservas confirmadas (sem pagamento) -->
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
+           href="{{ url_for('admin_reservations.admin_reservations') }}">
           Reservas
         </a>
 
+        <!-- Shows -->
         <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
-           href="/admin/shows">
+           href="{{ url_for('admin_shows.shows_list') }}">
           Shows Config.
         </a>
+
+        <!-- Configurações -->
         <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50"
            href="{{ url_for('admin_settings.settings_get') }}">
           Configurações
         </a>
 
+        <!-- Logout -->
         <form method="post" action="{{ url_for('admin_auth.admin_logout') }}">
           <button class="rounded-xl bg-black text-white px-4 py-2 text-sm">
             Sair
