@@ -2,38 +2,69 @@
 {% block admin_content %}
 
 <div class="bg-white rounded-2xl shadow p-5">
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-    <div>
-      <h2 class="text-xl font-semibold">Reservas confirmadas</h2>
-      <p class="text-sm text-zinc-500">Somente status <b>reserved</b> (sem pagamento).</p>
+  <div class="flex flex-col gap-4 mb-5">
+
+    <!-- Cabeçalho -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-semibold">Reservas confirmadas</h2>
+        <p class="text-sm text-zinc-500">
+          Somente reservas confirmadas (<b>status: reserved</b>)
+        </p>
+      </div>
+
+      {% if show_selected %}
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-flex items-center rounded-full bg-black text-white text-sm px-4 py-1.5">
+            {{ total_reservas }} reservas
+          </span>
+          <span class="inline-flex items-center rounded-full bg-zinc-100 text-zinc-800 text-sm px-4 py-1.5">
+            {{ total_pessoas }} pessoas
+          </span>
+        </div>
+      {% endif %}
     </div>
 
-    <form method="get" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-      <input name="q" value="{{ q }}" class="w-full sm:w-72 rounded-xl border p-3 text-sm"
-             placeholder="Buscar por nome, CPF, token…">
+    <!-- Filtros -->
+    <form method="get" class="flex flex-col md:flex-row gap-2">
+      <input
+        name="q"
+        value="{{ q }}"
+        class="w-full md:w-72 rounded-xl border p-3 text-sm"
+        placeholder="Buscar por nome, CPF, telefone, token…"
+      >
 
-      <select name="show" class="w-full sm:w-72 rounded-xl border p-3 text-sm">
+      <select name="show" class="w-full md:w-72 rounded-xl border p-3 text-sm">
         <option value="">Todos os shows</option>
         {% for sh in show_options %}
-          <option value="{{ sh }}" {% if show_selected == sh %}selected{% endif %}>{{ sh }}</option>
+          <option value="{{ sh }}" {% if show_selected == sh %}selected{% endif %}>
+            {{ sh }}
+          </option>
         {% endfor %}
       </select>
 
-      <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">Filtrar</button>
+      <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">
+        Filtrar
+      </button>
 
       {% if show_selected %}
-        <a href="{{ url_for('admin_reservations.admin_reservations_portaria_pdf', show=show_selected, q=q) }}"
-           class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+        <a
+          href="{{ url_for('admin_reservations.admin_reservations_portaria_pdf', show=show_selected, q=q) }}"
+          class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center"
+        >
           Portaria (PDF)
         </a>
       {% else %}
-        <span class="rounded-xl border px-4 py-3 text-sm text-zinc-400 text-center cursor-not-allowed">
-          Portaria (PDF) — selecione um show
+        <span
+          class="rounded-xl border px-4 py-3 text-sm text-zinc-400 cursor-not-allowed"
+        >
+          Portaria (PDF)
         </span>
       {% endif %}
     </form>
   </div>
 
+  <!-- Tabela -->
   <div class="rounded-xl border divide-y">
     <div class="hidden md:grid grid-cols-5 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
       <div>Show</div>
@@ -59,12 +90,16 @@
 
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoas</div>
-          {{ p.ticket_qty or 1 }}
+          <span class="font-semibold">{{ p.ticket_qty or 1 }}</span>
         </div>
 
         <div>
           <div class="md:hidden text-xs text-zinc-400 mb-1">Data da reserva</div>
-          {% if p.created_at %}{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          {% if p.created_at %}
+            {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
+          {% else %}
+            —
+          {% endif %}
         </div>
 
         <div>
@@ -75,7 +110,9 @@
     {% endfor %}
 
     {% if rows|length == 0 %}
-      <div class="p-6 text-center text-zinc-500">Nenhuma reserva confirmada encontrada.</div>
+      <div class="p-6 text-center text-zinc-500">
+        Nenhuma reserva encontrada.
+      </div>
     {% endif %}
   </div>
 </div>
