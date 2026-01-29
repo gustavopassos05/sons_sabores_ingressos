@@ -23,6 +23,8 @@ from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
 from routes.home import bp_home
 from routes.mercadopago import bp_mp
+from routes.admin_reservations import bp_admin_reservations
+
 
 
 load_dotenv()
@@ -61,6 +63,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_delete)
     app.register_blueprint(bp_admin_shows)
     app.register_blueprint(bp_mp)
+    app.register_blueprint(bp_admin_reservations)
+
 
     # finalizador
     app.extensions["finalize_purchase"] = finalize_purchase_factory()

@@ -3,6 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from flask import Blueprint, render_template, request, abort, flash, redirect, url_for
 from sqlalchemy import select, desc, func
+from io import BytesIO
 import csv
 from io import StringIO
 from flask import Response
@@ -14,6 +15,8 @@ from reportlab.lib import colors
 from db import db
 from models import Purchase, Payment, Ticket
 from routes.admin_auth import admin_required
+from sqlalchemy import select, desc, func
+from models import Purchase, Payment, Ticket
 
 from app_services.email_service import send_email
 from app_services.email_templates import build_tickets_email
@@ -30,26 +33,34 @@ def now_sp():
 @admin_required
 def admin_purchases_table():
     q = (request.args.get("q") or "").strip().lower()
+    show_selected = (request.args.get("show") or "").strip()
 
     with db() as s:
-        purchases = list(s.scalars(select(Purchase).order_by(desc(Purchase.id)).limit(400)))
+        # lista de shows disponíveis (apenas compras pagas)
+        show_options = list(
+            s.scalars(
+                select(Purchase.show_name)
+                .join(Payment, Payment.purchase_id == Purchase.id)
+                .where(Payment.status == "paid")
+                .distinct()
+                .order_by(Purchase.show_name.asc())
+            )
+        )
+
+        stmt = (
+            select(Purchase, Payment)
+            .join(Payment, Payment.purchase_id == Purchase.id)
+            .where(Payment.status == "paid")
+            .order_by(desc(Purchase.id))
+            .limit(800)
+        )
+
+        pairs = list(s.execute(stmt).all())
 
         rows = []
-        for p in purchases:
-            pay_paid = s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == p.id, Payment.status == "paid")
-                .order_by(desc(Payment.id))
-            )
-            pay = pay_paid or s.scalar(
-                select(Payment)
-                .where(Payment.purchase_id == p.id)
-                .order_by(desc(Payment.id))
-            )
-
-            ticket_count = s.scalar(
-                select(func.count()).select_from(Ticket).where(Ticket.purchase_id == p.id)
-            ) or 0
+        for p, pay in pairs:
+            if show_selected and (p.show_name or "") != show_selected:
+                continue
 
             hay = " ".join([
                 (p.buyer_name or ""),
@@ -65,13 +76,23 @@ def admin_purchases_table():
             if q and q not in hay:
                 continue
 
+            ticket_count = s.scalar(
+                select(func.count()).select_from(Ticket).where(Ticket.purchase_id == p.id)
+            ) or 0
+
             rows.append({
                 "purchase": p,
                 "payment": pay,
                 "ticket_count": ticket_count,
             })
 
-    return render_template("admin_purchases_table.html", rows=rows, q=q)
+    return render_template(
+        "admin_purchases_table.html",
+        rows=rows,
+        q=q,
+        show_options=show_options,
+        show_selected=show_selected,
+    )
 
 
 @bp_admin_purchases.post("/admin/purchases/send-email/<int:purchase_id>")

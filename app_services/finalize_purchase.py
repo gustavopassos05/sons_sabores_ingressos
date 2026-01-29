@@ -21,6 +21,12 @@ from app_services.ticket_generator import (
 )
 from app_services.ftp_uploader import upload_file
 
+# no topo
+from zoneinfo import ZoneInfo
+SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
+def now_sp():
+    return datetime.now(SAO_PAULO_TZ).replace(tzinfo=None)
+
 def _names_from_purchase(p: Purchase) -> List[str]:
     """
     Comprador + convidados (aceita guests_text com linhas e também ',' e ';').
@@ -164,7 +170,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
                     person_type="buyer" if idx == 1 else "guest",
                     token=secrets.token_urlsafe(18),
                     status="issued",
-                    issued_at=datetime.utcnow(),
+                    issued_at=now_sp(),
                 )
                 s.add(t)
                 s.flush()  # garante t.id
@@ -241,7 +247,7 @@ def finalize_purchase_factory() -> Callable[[int], None]:
 
             payment.tickets_pdf_url = f"{public_base}/{pdf_all_remote}"
             payment.tickets_zip_url = f"{public_base}/{zip_remote}"
-            payment.tickets_generated_at = datetime.utcnow()
+            payment.tickets_generated_at = now_sp()
 
             s.add(payment)
             s.commit()
