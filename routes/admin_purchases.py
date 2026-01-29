@@ -6,6 +6,11 @@ from sqlalchemy import select, desc, func
 import csv
 from io import StringIO
 from flask import Response
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
 from db import db
 from models import Purchase, Payment, Ticket
 from routes.admin_auth import admin_required
@@ -241,9 +246,9 @@ def admin_send_purchase_email_buyer(purchase_id: int):
         flash(f"Falha ao enviar e-mail: {e}", "error")
 
     return redirect(url_for("admin_purchases.admin_purchases_table"))
-@bp_admin_purchases.get("/admin/purchases/export.csv")
+@bp_admin_purchases.get("/admin/purchases/export.pdf")
 @admin_required
-def admin_purchases_export_csv():
+def admin_purchases_export_pdf():
     q = (request.args.get("q") or "").strip().lower()
     show_filter = (request.args.get("show") or "").strip().lower()
 
@@ -253,69 +258,107 @@ def admin_purchases_export_csv():
                 select(Purchase, Payment)
                 .join(Payment, Payment.purchase_id == Purchase.id)
                 .where(Payment.status == "paid")
-                .order_by(desc(Purchase.id))
-                .limit(2000)
+                .order_by(desc(Purchase.created_at))
             ).all()
         )
 
         rows = []
+        total_geral = 0
+
         for p, pay in pairs:
             if show_filter and show_filter not in (p.show_name or "").lower():
                 continue
 
             hay = " ".join([
-                (p.buyer_name or ""),
-                (p.buyer_cpf or ""),
-                (p.show_name or ""),
-                (p.token or ""),
-                (pay.provider or ""),
-                (pay.status or ""),
-                (p.buyer_email or ""),
-                (p.buyer_phone or ""),
+                p.buyer_name or "",
+                p.buyer_cpf or "",
+                p.show_name or "",
+                p.token or "",
+                p.buyer_email or "",
             ]).lower()
 
             if q and q not in hay:
                 continue
 
-            rows.append((p, pay))
+            total = (pay.amount_cents or 0) / 100
+            total_geral += total
+            rows.append((p, pay, total))
 
-    out = StringIO()
-    w = csv.writer(out)
-    w.writerow([
-        "Show", "Comprador", "CPF", "Email", "Telefone",
-        "Pessoas", "Preço_unit", "Total", "Status_compra", "Status_pagto",
-        "Provider", "Token", "Criado_em"
-    ])
+    buffer = BytesIO()
 
-    for p, pay in rows:
-        qty = int(p.ticket_qty or 1)
-        unit = (int(p.ticket_unit_price_cents or 0) / 100)
-        total = (int(pay.amount_cents or 0) / 100)
-        created = p.created_at.strftime("%d/%m/%Y %H:%M") if p.created_at else ""
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=2*cm,
+        leftMargin=2*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm
+    )
 
-        w.writerow([
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Cabeçalho
+    elements.append(Paragraph("<b>Borogodó · Sons & Sabores</b>", styles["Title"]))
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph(
+        f"Relatório de compras confirmadas<br/>Gerado em: {now_sp().strftime('%d/%m/%Y %H:%M')}",
+        styles["Normal"]
+    ))
+    elements.append(Spacer(1, 12))
+
+    if show_filter:
+        elements.append(Paragraph(f"<b>Filtro por show:</b> {show_filter}", styles["Normal"]))
+        elements.append(Spacer(1, 12))
+
+    # Tabela
+    table_data = [[
+        "Show", "Comprador", "Email", "Qtd", "Valor unit.", "Total", "Data"
+    ]]
+
+    for p, pay, total in rows:
+        unit = (p.ticket_unit_price_cents or 0) / 100
+        table_data.append([
             p.show_name,
             p.buyer_name,
-            p.buyer_cpf or "",
             p.buyer_email or "",
-            p.buyer_phone or "",
-            qty,
-            f"{unit:.2f}".replace(".", ","),
-            f"{total:.2f}".replace(".", ","),
-            p.status or "",
-            pay.status or "",
-            pay.provider or "",
-            p.token,
-            created,
+            str(p.ticket_qty),
+            f"R$ {unit:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            f"R$ {total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            p.created_at.strftime("%d/%m/%Y %H:%M") if p.created_at else "",
         ])
 
-    ts = now_sp().strftime("%Y-%m-%d-%H-%M")
-    suffix = f"-{show_filter.replace(' ', '-')}" if show_filter else ""
-    filename = f"compras{suffix}-{ts}.csv"
+    table = Table(table_data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("FONT", (0,0), (-1,0), "Helvetica-Bold"),
+        ("ALIGN", (3,1), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BOTTOMPADDING", (0,0), (-1,0), 8),
+    ]))
 
-    resp = Response(out.getvalue(), mimetype="text/csv; charset=utf-8")
-    resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    return resp
+    elements.append(table)
+    elements.append(Spacer(1, 14))
+
+    # Total geral
+    elements.append(Paragraph(
+        f"<b>Total geral:</b> R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+        styles["Heading2"]
+    ))
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    ts = now_sp().strftime("%Y-%m-%d-%H-%M")
+    filename = f"compras-confirmadas-{ts}.pdf"
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename
+    )
 
 @bp_admin_purchases.get("/admin/purchases/summary")
 @admin_required
@@ -352,3 +395,169 @@ def admin_purchases_mark_paid(token: str):
     Reaproveita a lógica existente do admin_pending.
     """
     return redirect(url_for("admin_pending.admin_mark_paid", token=token))
+def _safe_filename(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = "".join(ch if ch.isalnum() else "-" for ch in s)
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-") or "show"
+
+def _parse_guests_text(guests_text: str) -> list[str]:
+    raw = (guests_text or "").strip()
+    if not raw:
+        return []
+    out = []
+    for line in raw.splitlines():
+        line = (line or "").strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace(";", ",").split(",") if p.strip()]
+        out.extend(parts)
+    return out
+
+@bp_admin_purchases.get("/admin/purchases/portaria.pdf")
+@admin_required
+def admin_portaria_pdf():
+    """
+    PDF "Portaria" por show (somente pagamentos confirmados).
+    1 linha por pessoa (comprador + acompanhantes), exibindo CPF e telefone do comprador.
+    Uso:
+      /admin/purchases/portaria.pdf?show=<NOME EXATO DO SHOW>
+    """
+    show_name = (request.args.get("show") or "").strip()
+    if not show_name:
+        abort(400, description="Parâmetro obrigatório: show")
+
+    q = (request.args.get("q") or "").strip().lower()
+
+    with db() as s:
+        pairs = list(
+            s.execute(
+                select(Purchase, Payment)
+                .join(Payment, Payment.purchase_id == Purchase.id)
+                .where(
+                    Payment.status == "paid",
+                    Purchase.show_name == show_name
+                )
+                .order_by(desc(Purchase.created_at))
+                .limit(5000)
+            ).all()
+        )
+
+    # Expande 1 linha por pessoa
+    people_rows = []
+    for p, pay in pairs:
+        hay = " ".join([
+            p.buyer_name or "",
+            p.buyer_cpf or "",
+            p.buyer_email or "",
+            p.buyer_phone or "",
+            p.token or "",
+            (p.guests_text or "")
+        ]).lower()
+        if q and q not in hay:
+            continue
+
+        buyer = (p.buyer_name or "").strip() or "Comprador"
+        guests = _parse_guests_text(p.guests_text)
+
+        buyer_cpf = (p.buyer_cpf or "").strip()
+        buyer_phone = (p.buyer_phone or "").strip()
+
+        # comprador
+        people_rows.append({
+            "person": buyer,
+            "kind": "Comprador",
+            "buyer_cpf": buyer_cpf,
+            "buyer_phone": buyer_phone,
+            "token": p.token,
+            "created": p.created_at.strftime("%d/%m/%Y %H:%M") if p.created_at else "",
+        })
+
+        # acompanhantes
+        for g in guests:
+            people_rows.append({
+                "person": g,
+                "kind": "Acompanhante",
+                "buyer_cpf": buyer_cpf,
+                "buyer_phone": buyer_phone,
+                "token": p.token,
+                "created": p.created_at.strftime("%d/%m/%Y %H:%M") if p.created_at else "",
+            })
+
+    # ----- PDF -----
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.2*cm,
+        leftMargin=1.2*cm,
+        topMargin=1.2*cm,
+        bottomMargin=1.2*cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    generated_at = now_sp().strftime("%d/%m/%Y %H:%M")
+
+    elements.append(Paragraph("<b>Borogodó · Sons & Sabores</b>", styles["Title"]))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(f"<b>Lista Portaria</b> — {show_name}", styles["Heading2"]))
+    elements.append(Paragraph(f"Gerado em: {generated_at}", styles["Normal"]))
+    if q:
+        elements.append(Paragraph(f"Filtro: <b>{q}</b>", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    # tabela: 1 linha por pessoa
+    table_data = [[
+        "#", "Nome", "Tipo", "CPF (comprador)", "Telefone (comprador)", "Token", "Check-in"
+    ]]
+
+    for i, r in enumerate(people_rows, start=1):
+        table_data.append([
+            str(i),
+            r["person"],
+            r["kind"],
+            r["buyer_cpf"],
+            r["buyer_phone"],
+            r["token"],
+            "☐",
+        ])
+
+    # A4 útil ~ 18.6cm (com margens 1.2cm de cada lado)
+    table = Table(
+        table_data,
+        repeatRows=1,
+        colWidths=[0.7*cm, 5.8*cm, 1.9*cm, 2.6*cm, 3.1*cm, 3.0*cm, 1.5*cm]
+    )
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+    ]))
+
+    elements.append(table)
+    elements.append(Spacer(1, 10))
+
+    total_pessoas = len(people_rows)
+    total_compras = len(pairs)
+
+    elements.append(Paragraph(f"<b>Total de compras pagas:</b> {total_compras}", styles["Normal"]))
+    elements.append(Paragraph(f"<b>Total de pessoas (portaria):</b> {total_pessoas}", styles["Heading2"]))
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    ts = now_sp().strftime("%Y-%m-%d-%H-%M")
+    filename = f"portaria-{_safe_filename(show_name)}-{ts}.pdf"
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename
+    )
