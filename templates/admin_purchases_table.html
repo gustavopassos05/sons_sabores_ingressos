@@ -15,11 +15,16 @@
         <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
       </form>
 
-      <!-- ✅ Exportar CSV -->
-      <a href="{{ url_for('admin_purchases.admin_purchases_export_csv', q=q) }}"
+      <a href="{{ url_for('admin_purchases.admin_purchases_export_pdf', q=q) }}"
          class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
-        Exportar CSV
+        Exportar PDF (Compras)
       </a>
+
+      <a href="{{ url_for('admin_purchases.admin_portaria_pdf', show=(request.args.get('show') or ''), q=q) }}"
+         class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+        Portaria (PDF)
+      </a>
+
       <a href="{{ url_for('admin_purchases.admin_purchases_summary') }}"
          class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
         Resumo por show
