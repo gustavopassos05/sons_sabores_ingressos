@@ -1,154 +1,188 @@
 {% extends "admin_base.html" %}
 {% block admin_content %}
-<div class="max-w-5xl mx-auto bg-white rounded-2xl shadow p-5">
+
+<div class="max-w-6xl mx-auto bg-white rounded-2xl shadow p-5">
 
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
     <div>
       <h2 class="text-2xl font-semibold">Admin · Pendências</h2>
-      <p class="text-sm text-zinc-500">Pagamentos pendentes e reservas aguardando confirmação.</p>
+      <p class="text-sm text-zinc-500">
+        Reservas e compras pendentes (reserva simples, preço pendente e pagamento pendente).
+      </p>
     </div>
 
-    <form method="get" class="flex gap-2">
-      <input type="text" name="q" value="{{ q }}"
-             placeholder="Buscar por nome, CPF, show, token…"
-             class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
-      <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
-    </form>
+    <div class="flex flex-col sm:flex-row gap-2">
+      <form method="get" class="flex gap-2">
+        <input type="text" name="q" value="{{ q }}"
+               placeholder="Buscar por nome, CPF, show, token, status…"
+               class="w-full sm:w-80 rounded-xl border p-3 text-sm"/>
+        <button class="rounded-xl bg-black text-white px-5 text-sm">Buscar</button>
+      </form>
+
+      <a href="{{ url_for('admin_pending.admin_pending_export_csv', q=q) }}"
+         class="rounded-xl border px-4 py-3 text-sm hover:bg-zinc-50 text-center">
+        Exportar CSV
+      </a>
+    </div>
   </div>
 
-  <div class="rounded-xl border divide-y">
+  <div class="rounded-xl border bg-white divide-y">
+
+    <div class="hidden md:grid grid-cols-7 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
+      <div>Show</div>
+      <div>Comprador</div>
+      <div>Status</div>
+      <div>Contato</div>
+      <div>Pessoas / Valor</div>
+      <div>Token</div>
+      <div>Ações</div>
+    </div>
+
     {% for row in rows %}
-      {% set p = row.purchase %}
-      {% set pay = row.payment %}
-      {% set st = (p.status or '')|lower %}
+      {% set purchase = row.purchase %}
+      {% set payment = row.payment %}
+      {% set st = (purchase.status or '').lower() %}
+      {% set pay_status = (payment.status if payment else 'n/d') %}
+      {% set total_brl = ((payment.amount_cents or 0) / 100) if payment else 0 %}
+      {% set unit_brl = ((purchase.ticket_unit_price_cents or 0) / 100) %}
+      {% set qty = (purchase.ticket_qty or 1) %}
 
-      <div class="p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-sm">
+      <div class="p-4 grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
 
+        <!-- Show -->
         <div>
-          <div class="text-xs text-zinc-400">Show</div>
-          <div class="font-medium">{{ p.show_name }}</div>
-          {% if p.created_at %}
-            <div class="text-xs text-zinc-500 mt-1">
-              {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
-            </div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Show</div>
+          <div class="font-medium">{{ purchase.show_name }}</div>
+          {% if purchase.created_at %}
+            <div class="text-xs text-zinc-500 mt-1">{{ purchase.created_at.strftime('%d/%m/%Y %H:%M') }}</div>
           {% endif %}
         </div>
 
+        <!-- Comprador -->
         <div>
-          <div class="text-xs text-zinc-400">Comprador</div>
-          <div class="font-medium">{{ p.buyer_name }}</div>
-          <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf }}</div>
-          {% if p.buyer_email %}<div class="text-xs text-zinc-500 break-all">Email: {{ p.buyer_email }}</div>{% endif %}
-          {% if p.buyer_phone %}<div class="text-xs text-zinc-500 break-all">Tel: {{ p.buyer_phone }}</div>{% endif %}
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Comprador</div>
+          <div class="font-medium">{{ purchase.buyer_name }}</div>
+          {% if purchase.buyer_cpf %}<div class="text-xs text-zinc-500">CPF: {{ purchase.buyer_cpf }}</div>{% endif %}
         </div>
 
+        <!-- Status -->
         <div>
-          <div class="text-xs text-zinc-400">Token</div>
-          <div class="text-xs break-all">{{ p.token }}</div>
-          <div class="text-xs text-zinc-500 mt-1">
-            Pessoas: {{ p.ticket_qty or 1 }}
-          </div>
-        </div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Status</div>
 
-        <div>
-          <div class="text-xs text-zinc-400">Tipo</div>
-
-          {% if st == "pending_payment" %}
-            <div class="font-semibold">Pagamento</div>
-            {% if pay %}
-              <div class="text-xs text-zinc-500">{{ pay.provider }} · {{ pay.status }}</div>
-              <div class="text-xs text-zinc-500">Total: R$ {{ '%.2f'|format((pay.amount_cents or 0)/100) }}</div>
-            {% else %}
-              <div class="text-xs text-zinc-500">Sem payment</div>
-            {% endif %}
-
-          {% elif st == "reservation_pending" %}
-            <div class="font-semibold">Reserva</div>
-            <div class="text-xs text-zinc-500">Aguardando confirmação</div>
-
-          {% elif st == "reservation_pending_price" %}
-            <div class="font-semibold">Reserva</div>
-            <div class="text-xs text-zinc-500">Aguardando preço</div>
-
+          {% if st == 'pending_payment' %}
+            <span class="inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-1">Pagamento pendente</span>
+          {% elif st == 'reservation_pending' %}
+            <span class="inline-block rounded-full bg-blue-100 text-blue-800 text-xs px-2 py-1">Reserva pendente</span>
+          {% elif st == 'reservation_pending_price' %}
+            <span class="inline-block rounded-full bg-amber-100 text-amber-800 text-xs px-2 py-1">Preço em definição</span>
+          {% elif st == 'paid' %}
+            <span class="inline-block rounded-full bg-green-100 text-green-800 text-xs px-2 py-1">Pago</span>
+          {% elif st == 'cancelled' %}
+            <span class="inline-block rounded-full bg-red-100 text-red-800 text-xs px-2 py-1">Cancelada</span>
           {% else %}
-            <div class="font-semibold">{{ p.status }}</div>
+            <span class="inline-block rounded-full bg-zinc-100 text-zinc-700 text-xs px-2 py-1">{{ st }}</span>
+          {% endif %}
+
+          {% if payment %}
+            <div class="text-xs text-zinc-500 mt-1">
+              Pagamento: <b>{{ pay_status }}</b> {% if payment.provider %}· {{ payment.provider }}{% endif %}
+            </div>
           {% endif %}
         </div>
 
-        <div class="flex flex-col gap-2 md:col-span-2">
+        <!-- Contato -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Contato</div>
+          <div class="text-xs text-zinc-700 break-all"><b>Email:</b> {{ purchase.buyer_email or '—' }}</div>
+          <div class="text-xs text-zinc-700 break-all mt-1"><b>Tel:</b> {{ purchase.buyer_phone or '—' }}</div>
+        </div>
 
-          {# ✅ BOTÕES POR STATUS #}
+        <!-- Pessoas / Valor -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoas / Valor</div>
+          <div><b>Pessoas:</b> {{ qty }}</div>
 
-          {% if st == "pending_payment" %}
-            <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
-               href="{{ url_for('purchase.pay_manual', token=p.token) }}">
-              Abrir página do Pix
-            </a>
-
-            <button type="button"
-                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
-                    onclick="confirmPaid('{{ p.token }}')">
-              Confirmar pagamento
-            </button>
-
-          {% elif st == "reservation_pending" %}
-            <button type="button"
-                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
-                    onclick="confirmReservation('{{ p.token }}')">
-              Confirmar reserva
-            </button>
-
-          {% elif st == "reservation_pending_price" %}
-            <div class="rounded-xl border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-900">
-              Aguardando definição de preço para este show.
+          {% if st == 'pending_payment' %}
+            <div class="text-xs text-zinc-600 mt-1">
+              <b>Unit:</b> R$ {{ '%.2f'|format(unit_brl) }} · <b>Total:</b> R$ {{ '%.2f'|format(total_brl) }}
             </div>
-            <a class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center"
-               href="{{ url_for('admin_shows.shows_list') }}">
-              Ir para Admin · Shows
-            </a>
-
-            <button type="button"
-                    class="rounded-xl bg-black text-white px-3 py-2 text-xs"
-                    onclick="confirmReservation('{{ p.token }}')">
-              Confirmar reserva
-            </button>
+          {% elif st in ['reservation_pending', 'reservation_pending_price'] %}
+            <div class="text-xs text-zinc-600 mt-1">
+              {% if st == 'reservation_pending_price' %}
+                Preço em definição
+              {% else %}
+                Reserva sem pagamento
+              {% endif %}
+            </div>
           {% endif %}
+        </div>
 
-          {% set purchase = row.purchase %}
-          {% set payment = row.payment %}
-          {% set st = (purchase.status or '').lower() %}
+        <!-- Token -->
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Token</div>
+          <div class="text-xs break-all">{{ purchase.token }}</div>
+        </div>
 
-          {% if st in ['reservation_pending', 'reservation_pending_price', 'pending_payment'] %}
-            <form method="post"
-                  action="{{ url_for('admin_pending.admin_reject', token=purchase.token) }}"
-                  onsubmit="return confirm('Rejeitar esta reserva?');">
-              <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-                Rejeitar reserva
+        <!-- Ações -->
+        <div class="flex flex-col gap-2">
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Ações</div>
+
+          {# ✅ Confirmar reserva (somente reservas) #}
+          {% if st in ['reservation_pending', 'reservation_pending_price'] %}
+            <form method="post" action="{{ url_for('admin_pending.confirm_reservation', token=purchase.token) }}">
+              <button class="rounded-xl bg-black text-white px-3 py-2 text-xs w-full">
+                Confirmar reserva
               </button>
             </form>
           {% endif %}
 
-
-
-          <form method="post"
-                action="{{ url_for('admin_delete.delete_purchase', token=p.token, next=request.full_path) }}"
-                onsubmit="return confirm('Excluir a COMPRA inteira? Isso apaga pagamentos e todos os ingressos.');">
-            <button class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 w-full">
-              Excluir compra
+          {# ✅ Confirmar pagamento (somente pendente de pagamento) #}
+          {% if st == 'pending_payment' and pay_status|lower != 'paid' %}
+            <button type="button"
+                    class="rounded-xl bg-black text-white px-3 py-2 text-xs w-full"
+                    onclick="confirmPaid('{{ purchase.token }}')">
+              Confirmar pagamento
             </button>
-          </form>
 
+            <a href="{{ url_for('purchase.pay_manual', token=purchase.token) }}"
+               target="_blank"
+               class="rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50 text-center">
+              Ver Pix / comprovante
+            </a>
+          {% endif %}
 
+          {# ❌ Rejeitar com motivo (pendentes) #}
+          {% if st in ['reservation_pending', 'reservation_pending_price', 'pending_payment'] %}
+            <details class="rounded-xl border p-3">
+              <summary class="cursor-pointer text-xs font-medium">Rejeitar</summary>
+
+              <form method="post"
+                    action="{{ url_for('admin_pending.admin_reject', token=purchase.token) }}"
+                    class="mt-3 space-y-2"
+                    onsubmit="return confirm('Rejeitar esta reserva?');">
+
+                <select name="reason" class="w-full rounded-xl border p-2 text-xs">
+                  <option value="Lotação esgotada.">Lotação esgotada</option>
+                  <option value="Pagamento não identificado dentro do prazo.">Pagamento não identificado</option>
+                  <option value="Reserva duplicada.">Reserva duplicada</option>
+                  <option value="Não foi possível confirmar a reserva.">Outro / padrão</option>
+                </select>
+
+                <button class="w-full rounded-xl border px-3 py-2 text-xs hover:bg-zinc-50">
+                  Confirmar rejeição
+                </button>
+              </form>
+            </details>
+          {% endif %}
         </div>
 
       </div>
     {% endfor %}
 
     {% if rows|length == 0 %}
-      <div class="p-6 text-center text-zinc-500">Nenhuma pendência encontrada.</div>
+      <div class="p-6 text-center text-zinc-500">Nenhum registro encontrado.</div>
     {% endif %}
   </div>
-
 </div>
 
 <script>
@@ -158,29 +192,12 @@
     const res = await fetch("/admin/mark-paid/" + purchaseToken, { method: "POST" });
 
     if (res.ok) {
-      alert("Pagamento confirmado ✅ Ingressos gerados/FTP em andamento.");
+      alert("Pagamento confirmado ✅");
       window.location.reload();
     } else {
       alert("Erro ao confirmar pagamento. Veja logs.");
     }
   }
-
-  async function confirmReservation(purchaseToken) {
-    if (!confirm("Confirmar reserva e enviar e-mail (se houver)?")) return;
-
-    const res = await fetch("/admin/confirm-reservation/" + purchaseToken, { method: "POST" });
-
-    if (res.redirected) {
-      window.location.href = res.url;
-      return;
-    }
-
-    if (res.ok) {
-      alert("Reserva confirmada ✅");
-      window.location.reload();
-    } else {
-      alert("Erro ao confirmar reserva. Veja logs.");
-    }
-  }
 </script>
+
 {% endblock %}

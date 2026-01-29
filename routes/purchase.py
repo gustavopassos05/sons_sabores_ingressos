@@ -7,7 +7,7 @@ from pathlib import Path
 
 from werkzeug.utils import secure_filename
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for, current_app
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 
 from db import db
 from models import Event, Purchase, Payment, Show
@@ -130,7 +130,6 @@ def buy(event_slug: str):
         show_requires_map=show_requires_map,
         preselect_slug=preselect_slug,
     )
-
 @bp_purchase.post("/buy/<event_slug>")
 def buy_post(event_slug: str):
     base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
@@ -178,7 +177,33 @@ def buy_post(event_slug: str):
 
         total_people = 1 + len(guests_lines)
 
-        # ✅ dedupe (evita clique duplo)
+        # =========================================================
+        # ✅ LOTAÇÃO (capacity) — corrigido (indent + filtro por event)
+        # =========================================================
+        cap = int(getattr(sh, "capacity", 0) or 0)
+        if cap > 0:
+            used = s.scalar(
+                select(func.coalesce(func.sum(Purchase.ticket_qty), 0))
+                .where(
+                    Purchase.event_id == ev.id,
+                    Purchase.show_name == show_name,
+                    Purchase.status.in_([
+                        "reservation_pending",
+                        "reservation_pending_price",
+                        "pending_payment",
+                        "paid",
+                        "reserved",
+                    ])
+                )
+            ) or 0
+
+            if used + total_people > cap:
+                flash("Este show já atingiu a lotação. Selecione outra atração.", "error")
+                return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+        # =========================================================
+        # ✅ DEDUPE (evita clique duplo) — com horário SP
+        # =========================================================
         dedupe_window_sec = int(os.getenv("RESERVATION_DEDUPE_SECONDS", "120"))
         cutoff = now_sp() - timedelta(seconds=dedupe_window_sec)
 
@@ -200,9 +225,9 @@ def buy_post(event_slug: str):
             flash("Já recebemos sua solicitação ✅ Abrindo o status.", "success")
             return redirect(url_for("purchase.purchase_status", token=existing.token))
 
-        # -------------------------
-        # CASO A — apenas reserva
-        # -------------------------
+        # =========================================================
+        # CASO A — apenas reserva (sem ingresso)
+        # =========================================================
         if int(sh.requires_ticket or 0) == 0:
             purchase = Purchase(
                 event_id=ev.id,
@@ -224,7 +249,6 @@ def buy_post(event_slug: str):
 
             send_reservation_notification(purchase)
 
-            # e-mail cliente (reserva registrada)
             if buyer_email and "@" in buyer_email:
                 guests = [g.strip() for g in guests_lines if g.strip()]
                 status_url = f"{base_url}/status/{purchase.token}"
@@ -238,6 +262,7 @@ def buy_post(event_slug: str):
                     status_url=status_url,
                     price_pending=False,
                     guests=guests,
+                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0)
                 )
                 try:
                     send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
@@ -254,9 +279,9 @@ def buy_post(event_slug: str):
             flash("Reserva enviada ✅ Já já você recebe a confirmação por e-mail.", "success")
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # -------------------------
-        # CASO B — preço pendente
-        # -------------------------
+        # =========================================================
+        # CASO B — show exige ingresso, mas preço ainda não definido
+        # =========================================================
         if sh.price_cents is None:
             purchase = Purchase(
                 event_id=ev.id,
@@ -291,7 +316,7 @@ def buy_post(event_slug: str):
                     status_url=status_url,
                     price_pending=True,
                     guests=guests,
-                    unit_price_cents=purchase.ticket_unit_price_cents,
+                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0, não será exibido pq pending)
                 )
                 try:
                     send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
@@ -307,9 +332,9 @@ def buy_post(event_slug: str):
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
-        # -------------------------
+        # =========================================================
         # CASO C — pagamento (Pix manual)
-        # -------------------------
+        # =========================================================
         unit_price_cents = int(sh.price_cents)
         total_cents = unit_price_cents * total_people
 
@@ -326,7 +351,7 @@ def buy_post(event_slug: str):
             status="pending_payment",
             created_at=now_sp(),
             ticket_qty=total_people,
-            ticket_unit_price_cents=unit_price_cents,
+            ticket_unit_price_cents=unit_price_cents,  # ✅ preço do show congelado
         )
         s.add(purchase)
         s.commit()
@@ -341,7 +366,8 @@ def buy_post(event_slug: str):
         )
         s.add(payment)
         s.commit()
-        # ✅ NOVO: avisar admin também quando está pendente de pagamento
+
+        # ✅ avisar admin também quando está pendente de pagamento
         send_reservation_notification(purchase)
 
         return redirect(url_for("purchase.pay_manual", token=purchase.token))

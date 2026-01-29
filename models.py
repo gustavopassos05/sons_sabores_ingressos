@@ -59,6 +59,9 @@ class Purchase(Base):
 
     tickets: Mapped[list["Ticket"]] = relationship(back_populates="purchase")
     payments: Mapped[list["Payment"]] = relationship(back_populates="purchase")
+    rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
+    rejected_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
 
 
 class Ticket(Base):
@@ -143,4 +146,6 @@ class Show(Base):
     title: Mapped[str] = mapped_column(String(220), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     image_url: Mapped[str] = mapped_column(String(600), nullable=True)
+    capacity: Mapped[int] = mapped_column(Integer, nullable=True)
+
 

@@ -118,6 +118,9 @@ def shows_create():
     title = (request.form.get("title") or "").strip()
     description = (request.form.get("description") or "").strip()
     date_text = (request.form.get("date_text") or "").strip()
+    capacity_raw = (request.form.get("capacity") or "").strip()
+    capacity = int(capacity_raw) if capacity_raw.isdigit() else None
+
 
     price_brl = (request.form.get("price_brl") or "").strip()
     price_cents = brl_to_cents(price_brl)
@@ -148,6 +151,8 @@ def shows_create():
             price_cents=price_cents,  # pode ser None
             is_active=1,
             requires_ticket=requires_ticket,
+            capacity=capacity
+
         )
 
         # campos novos (no model)
@@ -183,6 +188,8 @@ def shows_update(show_id: int):
 
     price_brl = (request.form.get("price_brl") or "").strip()
     price_cents = brl_to_cents(price_brl)  # pode ser None
+    capacity_raw = (request.form.get("capacity") or "").strip()
+    capacity = int(capacity_raw) if capacity_raw.isdigit() else None
 
     is_active = 1 if (request.form.get("is_active") == "1") else 0
     requires_ticket = 1 if (request.form.get("requires_ticket") == "1") else 0
@@ -203,6 +210,7 @@ def shows_update(show_id: int):
         sh.price_cents = price_cents
         sh.is_active = is_active
         sh.requires_ticket = requires_ticket
+        sh.capacity = capacity
 
         # campos novos (no model)
         if hasattr(sh, "title"):
