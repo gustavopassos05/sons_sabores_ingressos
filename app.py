@@ -7,6 +7,9 @@ from flask import Flask
 from models import Base
 from db import engine
 
+from sqlalchemy import select, func
+from models import Purchase
+
 from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
 from routes.ftp import bp_ftp
@@ -69,6 +72,26 @@ def create_app() -> Flask:
     # finalizador
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
 
-    return app
+
+    @app.context_processor
+    def inject_admin_badges():
+        # default (pra não quebrar páginas públicas)
+        data = {}
+
+        try:
+            with db() as s:
+                total_pessoas = s.scalar(
+                    select(func.coalesce(func.sum(Purchase.ticket_qty), 0))
+                    .where(Purchase.status.in_(["reserved", "paid"]))
+                ) or 0
+
+            data["admin_reservas_pessoas_total"] = int(total_pessoas)
+        except Exception:
+            data["admin_reservas_pessoas_total"] = 0
+
+        return data
+
+
+        return app
 
 app = create_app()

@@ -36,25 +36,29 @@ def admin_reservations():
     show_selected = (request.args.get("show") or "").strip()
 
     with db() as s:
-        # shows que têm reservas confirmadas
-        show_options = list(
-            s.scalars(
-                select(Purchase.show_name)
+        # ✅ lista de shows + total de pessoas por show (reserved + paid)
+        show_stats = list(
+            s.execute(
+                select(
+                    Purchase.show_name,
+                    func.coalesce(func.sum(Purchase.ticket_qty), 0)
+                )
                 .where(Purchase.status.in_(["reserved", "paid"]))
-                .distinct()
+                .group_by(Purchase.show_name)
                 .order_by(Purchase.show_name.asc())
-            )
+            ).all()
         )
+
+        show_options = [name for (name, _) in show_stats]
 
         purchases = list(
             s.scalars(
                 select(Purchase)
-                .where(Purchase.status.in_(["reserved", "paid"]), Purchase.show_name == show_name)
+                .where(Purchase.status.in_(["reserved", "paid"]))
                 .order_by(desc(Purchase.created_at))
-                .limit(5000)
+                .limit(2000)
             )
         )
-
 
     rows = []
     total_reservas = 0
@@ -87,4 +91,5 @@ def admin_reservations():
         show_selected=show_selected,
         total_reservas=total_reservas,
         total_pessoas=total_pessoas,
+        show_stats=show_stats,  # ✅ novo: lista (show_name, total_pessoas)
     )

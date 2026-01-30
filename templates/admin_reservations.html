@@ -46,6 +46,21 @@
       <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">
         Filtrar
       </button>
+      {% if show_stats and show_stats|length > 0 %}
+        <div class="flex flex-wrap gap-2 mb-4">
+          {% for name, people in show_stats %}
+            <a href="{{ url_for('admin_reservations.admin_reservations', show=name, q=q) }}"
+               class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm hover:bg-zinc-50
+                      {% if show_selected == name %} bg-black text-white border-black {% endif %}">
+              <span>{{ name }}</span>
+              <span class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-semibold
+                           {% if show_selected == name %} bg-white text-black {% else %} bg-black text-white {% endif %}">
+                {{ people }}
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
 
       {% if show_selected %}
         <a

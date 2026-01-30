@@ -39,20 +39,16 @@
           Compras
         </a>
 
-        <a href="/admin/purchases"
-           class="relative rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 flex items-center gap-2">
+        <a class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50 flex items-center gap-2"
+           href="{{ url_for('admin_reservations.admin_reservations') }}">
           Reservas
-
           {% if admin_reservas_pessoas_total and admin_reservas_pessoas_total > 0 %}
-            <span class="inline-flex items-center justify-center
-                         min-w-[24px] h-6 px-2
-                         text-xs font-semibold
-                         rounded-full
-                         bg-black text-white">
+            <span class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-semibold bg-black text-white">
               {{ admin_reservas_pessoas_total }}
             </span>
           {% endif %}
         </a>
+
 
 
         <!-- Shows -->
