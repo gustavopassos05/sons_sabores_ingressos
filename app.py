@@ -4,11 +4,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask
 
-from models import Base
-from db import engine
-
 from sqlalchemy import select, func
-from models import Purchase
+
+from models import Base, Purchase
+from db import engine, db
 
 from routes.purchase import bp_purchase
 from routes.tickets import bp_tickets
@@ -25,12 +24,10 @@ from routes.admin_purchases import bp_admin_purchases
 from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
 from routes.home import bp_home
-from routes.mercadopago import bp_mp
 from routes.admin_reservations import bp_admin_reservations
 
-
-
 load_dotenv()
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -51,11 +48,12 @@ def create_app() -> Flask:
     Base.metadata.create_all(engine)
 
     # ✅ BLUEPRINTS
-    app.register_blueprint(bp_home)        # ← AGORA ESSA É A HOME REAL
+    app.register_blueprint(bp_home)
     app.register_blueprint(bp_purchase)
     app.register_blueprint(bp_tickets)
     app.register_blueprint(bp_ftp)
     app.register_blueprint(bp_webhooks)
+
     app.register_blueprint(bp_admin)
     app.register_blueprint(bp_admin_tickets)
     app.register_blueprint(bp_admin_pending)
@@ -65,17 +63,14 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_purchases)
     app.register_blueprint(bp_admin_delete)
     app.register_blueprint(bp_admin_shows)
-    app.register_blueprint(bp_mp)
     app.register_blueprint(bp_admin_reservations)
 
-
-    # finalizador
+    # ✅ pluga o finalizador
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
 
-
+    # ✅ badges globais pro admin
     @app.context_processor
     def inject_admin_badges():
-        # default (pra não quebrar páginas públicas)
         data = {}
 
         try:
@@ -84,14 +79,13 @@ def create_app() -> Flask:
                     select(func.coalesce(func.sum(Purchase.ticket_qty), 0))
                     .where(Purchase.status.in_(["reserved", "paid"]))
                 ) or 0
-
             data["admin_reservas_pessoas_total"] = int(total_pessoas)
         except Exception:
             data["admin_reservas_pessoas_total"] = 0
 
         return data
 
+    return app  # ✅ AGORA ESTÁ NO LUGAR CERTO
 
-        return app
 
 app = create_app()
