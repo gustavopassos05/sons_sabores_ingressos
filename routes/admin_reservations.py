@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, render_template, request, send_file, abort
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
