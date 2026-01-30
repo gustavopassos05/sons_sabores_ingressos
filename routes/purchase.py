@@ -55,13 +55,12 @@ def _emails_from_env(var_name: str) -> list[str]:
 
 def _status_label(st: str, *, admin: bool = False) -> str:
     st = (st or "").lower().strip()
-
     if admin:
         labels = {
             "reservation_pending": "Reserva registrada (aguardando confirmação)",
             "reservation_pending_price": "Reserva registrada (preço em definição)",
             "pending_payment": "Pagamento pendente (Pix)",
-            "paid": "Pago · Reserva confirmada ✅",
+            "paid": "Reserva confirmada ✅ (pago)",
             "reserved": "Reserva confirmada ✅",
             "cancelled": "Cancelada ❌",
             "failed": "Falhou / expirada",
@@ -76,7 +75,6 @@ def _status_label(st: str, *, admin: bool = False) -> str:
             "cancelled": "Reserva cancelada",
             "failed": "Falhou / expirada",
         }
-
     return labels.get(st, st or "—")
 
 def send_reservation_notification(purchase: Purchase) -> None:

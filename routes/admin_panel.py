@@ -7,8 +7,23 @@ from models import Payment, AdminSetting
 from routes.admin_auth import admin_required
 from app_services.email_service import send_email
 
+from models import Purchase
+
+
+
 bp_admin_panel = Blueprint("admin_panel", __name__)
 
+@app.context_processor
+def inject_admin_badges():
+    with db() as s:
+        total_pessoas = s.scalar(
+            select(func.coalesce(func.sum(Purchase.ticket_qty), 0))
+            .where(Purchase.status.in_(["reserved", "paid"]))
+        ) or 0
+
+    return dict(
+        admin_reservas_pessoas_total=total_pessoas
+    )
 
 def _get_setting(s, key: str, default: str = "") -> str:
     row = s.scalar(select(AdminSetting).where(AdminSetting.key == key))

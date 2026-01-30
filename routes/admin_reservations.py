@@ -40,7 +40,7 @@ def admin_reservations():
         show_options = list(
             s.scalars(
                 select(Purchase.show_name)
-                .where(Purchase.status == "reserved")
+                .where(Purchase.status.in_(["reserved", "paid"]))
                 .distinct()
                 .order_by(Purchase.show_name.asc())
             )
@@ -49,11 +49,12 @@ def admin_reservations():
         purchases = list(
             s.scalars(
                 select(Purchase)
-                .where(Purchase.status == "reserved")
+                .where(Purchase.status.in_(["reserved", "paid"]), Purchase.show_name == show_name)
                 .order_by(desc(Purchase.created_at))
-                .limit(2000)
+                .limit(5000)
             )
         )
+
 
     rows = []
     total_reservas = 0
