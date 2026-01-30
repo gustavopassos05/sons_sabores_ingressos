@@ -114,7 +114,7 @@ def portaria_pdf():
                     Purchase.status.in_(["reserved", "paid"]),
                     Purchase.show_name == show_name
                 )
-                .order_by(desc(Purchase.created_at))
+                .order_by(Purchase.created_at.asc())
                 .limit(5000)
             )
         )
@@ -158,7 +158,7 @@ def portaria_pdf():
     table_data = [["#", "Nome", "Pessoas", "Data da reserva", "Mesa"]]
     for i, p in enumerate(rows, start=1):
         created = p.created_at.strftime("%d/%m/%Y %H:%M") if p.created_at else ""
-        table_data.append([str(i), (p.buyer_name or ""), str(int(p.ticket_qty or 1)), created, "____"])
+        table_data.append([str(i), (p.buyer_name or ""), str(int(p.ticket_qty or 1)), created, ""])
 
     table = Table(table_data, repeatRows=1, colWidths=[0.8*cm, 8.3*cm, 1.7*cm, 4.0*cm, 2.2*cm])
     table.setStyle(TableStyle([
