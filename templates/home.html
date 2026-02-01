@@ -11,7 +11,8 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {% for c in cards %}
-      <div class="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col">
+      <div class="rounded-2xl border shadow-sm overflow-hidden flex flex-col
+                  {% if c.is_past %} bg-zinc-50 {% else %} bg-white {% endif %}">
 
         {# ✅ imagem sem cortar rosto #}
         <div class="aspect-[16/9] bg-zinc-100 overflow-hidden flex items-center justify-center">
@@ -24,6 +25,13 @@
         </div>
 
         <div class="p-4 flex-1 flex flex-col gap-2">
+
+          {# ✅ badge encerrado #}
+          {% if c.is_past %}
+            <div class="text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-3 py-1 w-fit">
+              Encerrado
+            </div>
+          {% endif %}
 
           {# ✅ Título sem truncate (quebra em até 3 linhas) #}
           <div class="text-lg font-semibold leading-tight text-zinc-900"
@@ -66,16 +74,30 @@
           </div>
 
           <div class="mt-4">
-            <a
-              href="{{ url_for('purchase.buy', event_slug=event.slug, show_slug=c.slug) }}"
-              class="inline-flex w-full justify-center rounded-xl bg-black text-white py-3 font-medium hover:opacity-90"
-            >
-              Reservar agora
-            </a>
+            {% if c.is_past %}
+              <button
+                type="button"
+                disabled
+                class="inline-flex w-full justify-center rounded-xl bg-zinc-200 text-zinc-600 py-3 font-medium cursor-not-allowed"
+              >
+                Encerrado
+              </button>
+            {% else %}
+              <a
+                href="{{ url_for('purchase.buy', event_slug=event.slug, show_slug=c.slug) }}"
+                class="inline-flex w-full justify-center rounded-xl bg-black text-white py-3 font-medium hover:opacity-90"
+              >
+                Reservar agora
+              </a>
+            {% endif %}
           </div>
 
           <div class="text-xs text-zinc-400 text-center">
-            Você será direcionado(a) para o formulário de reserva.
+            {% if c.is_past %}
+              Este show já aconteceu.
+            {% else %}
+              Você será direcionado(a) para o formulário de reserva.
+            {% endif %}
           </div>
 
         </div>
