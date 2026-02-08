@@ -1,78 +1,92 @@
 # routes/whatsapp.py
 import os
 from flask import Blueprint, redirect, abort, current_app
-from flask_login import login_required
 from sqlalchemy import select
 
-from db import db  # ✅ igual no app: from db import engine, db
-from models import Reserva
+from db import db
+from models import Purchase  # ✅ aqui é o modelo certo do projeto de ingressos
 
 from app_services.utils_whatsapp import (
     whatsapp_link,
-    msg_para_borogodo,
-    msg_para_cliente,
     phone_to_e164_br,
 )
 
 bp_whats = Blueprint("whats", __name__)
 
-BOROGODO_WHATS = os.getenv("BOROGODO_WHATS", "5531999613652").strip()
+BOROGODO_WHATS = (os.getenv("BOROGODO_WHATS") or "5531999613652").strip()
 
 
-def _get_reserva_or_404(reserva_id: int) -> Reserva:
+def _get_purchase_or_404(token: str) -> Purchase:
+    token = (token or "").strip()
+    if not token:
+        abort(404)
+
     with db() as s:
-        r = s.scalar(select(Reserva).where(Reserva.id == reserva_id))
-        if not r:
+        p = s.scalar(select(Purchase).where(Purchase.token == token))
+        if not p:
             abort(404)
-        # destaca da sessão pra evitar lazy-load depois
-        s.expunge(r)
-        return r
+        s.expunge(p)  # descola da sessão
+        return p
 
 
-@bp_whats.get("/reserva/<int:reserva_id>/whats/borogodo")
-@login_required
-def whats_borogodo(reserva_id: int):
-    r = _get_reserva_or_404(reserva_id)
-    link = whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(r))
+def _msg_para_borogodo(p: Purchase) -> str:
+    guests = (p.guests_text or "").strip()
+    guests_block = f"\nConvidados:\n{guests}\n" if guests else ""
+
+    return (
+        "🍽️ *Nova solicitação — Sons & Sabores*\n"
+        f"Show: {p.show_name}\n"
+        f"Nome: {p.buyer_name}\n"
+        f"CPF: {p.buyer_cpf_digits or p.buyer_cpf}\n"
+        f"E-mail: {p.buyer_email or '-'}\n"
+        f"Telefone: {p.buyer_phone or '-'}\n"
+        f"Pessoas: {p.ticket_qty or 1}\n"
+        f"Status: {p.status}\n"
+        f"Token: {p.token}\n"
+        f"{guests_block}"
+        "\n✅ Conferir no painel e confirmar com o cliente."
+    )
+
+
+def _msg_para_cliente(p: Purchase) -> str:
+    return (
+        "🍽️ *Borogodó — Solicitação recebida ✅*\n"
+        f"Olá, {p.buyer_name}! Recebemos sua solicitação:\n\n"
+        f"🎷 Show: {p.show_name}\n"
+        f"👥 Pessoas: {p.ticket_qty or 1}\n"
+        f"🔎 Código: {p.token}\n\n"
+        "Assim que confirmarmos, te avisamos por aqui. 😊"
+    )
+
+
+@bp_whats.get("/whats/purchase/<token>/borogodo")
+def whats_borogodo_purchase(token: str):
+    p = _get_purchase_or_404(token)
+    link = whatsapp_link(BOROGODO_WHATS, _msg_para_borogodo(p))
     return redirect(link)
 
 
-@bp_whats.get("/reserva/<int:reserva_id>/whats/cliente")
-@login_required
-def whats_cliente(reserva_id: int):
-    r = _get_reserva_or_404(reserva_id)
+@bp_whats.get("/whats/purchase/<token>/cliente")
+def whats_cliente_purchase(token: str):
+    p = _get_purchase_or_404(token)
 
-    tel = (getattr(r, "telefone", "") or "").strip()
+    tel = (p.buyer_phone or "").strip()
     if not tel:
-        current_app.logger.warning("[WHATS] Reserva %s sem telefone do cliente", reserva_id)
-        abort(400, description="Reserva sem telefone do cliente.")
+        current_app.logger.warning("[WHATS] Purchase %s sem buyer_phone", p.token)
+        abort(400, description="Compra sem telefone do cliente.")
 
-    link = whatsapp_link(tel, msg_para_cliente(r))
+    link = whatsapp_link(tel, _msg_para_cliente(p))
     return redirect(link)
 
 
-# ==========================
-# ✅ “DISPARO AUTOMÁTICO” (BÔNUS)
-# ==========================
-# WhatsApp comum NÃO permite enviar automático via servidor sem API oficial.
-# Então o “automático” aqui é: gerar links prontos e você decide abrir / salvar / mostrar no painel.
-
-def build_whats_links_for_reserva(reserva) -> dict:
-    cliente_phone = (getattr(reserva, "telefone", "") or "").strip()
+# ====== BÔNUS (disparo "automático" via link pronto) ======
+# WhatsApp normal não permite envio automático servidor->cliente sem API oficial.
+# O que dá pra fazer é: gerar links prontos, salvar no banco/log, e abrir com 1 clique.
+def build_whats_links_for_purchase(p: Purchase) -> dict:
+    cliente_phone = (p.buyer_phone or "").strip()
     return {
         "borogodo_phone": phone_to_e164_br(BOROGODO_WHATS),
         "cliente_phone": phone_to_e164_br(cliente_phone) if cliente_phone else "",
-        "link_borogodo": whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(reserva)),
-        "link_cliente": whatsapp_link(cliente_phone, msg_para_cliente(reserva)) if cliente_phone else "",
+        "link_borogodo": whatsapp_link(BOROGODO_WHATS, _msg_para_borogodo(p)),
+        "link_cliente": whatsapp_link(cliente_phone, _msg_para_cliente(p)) if cliente_phone else "",
     }
-
-
-def auto_whatsapp_on_new_reserva(reserva) -> dict:
-    links = build_whats_links_for_reserva(reserva)
-    current_app.logger.info(
-        "[WHATS/AUTO] reserva_id=%s link_borogodo=%s link_cliente=%s",
-        getattr(reserva, "id", None),
-        links.get("link_borogodo"),
-        links.get("link_cliente"),
-    )
-    return links
