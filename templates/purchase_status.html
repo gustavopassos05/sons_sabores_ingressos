@@ -99,6 +99,16 @@
         Falar com a equipe no WhatsApp
       </a>
 
+      <a class="btn" target="_blank"
+         href="{{ url_for('whats.whats_borogodo', reserva_id=reserva.id) }}">
+        Enviar para o Borogodó (WhatsApp)
+      </a>
+
+      <a class="btn" target="_blank"
+         href="{{ url_for('whats.whats_cliente', reserva_id=reserva.id) }}">
+        Enviar confirmação para o cliente
+      </a>
+
     </div>
   {% endif %}
 

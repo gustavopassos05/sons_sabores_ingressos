@@ -147,6 +147,9 @@ def buy_post(event_slug: str):
     if not base_url:
         raise RuntimeError("BASE_URL não configurado")
 
+    # ✅ Disparo automático de WhatsApp (via purchase_status?wa=1)
+    auto_whats = (os.getenv("AUTO_WHATSAPP_ON_CREATE", "0") or "").strip().lower() in ("1", "true", "t", "yes", "y", "on")
+
     show_name = (request.form.get("show_name") or "").strip()
     buyer_name = (request.form.get("buyer_name") or "").strip()
     buyer_cpf = (request.form.get("buyer_cpf") or "").strip()
@@ -234,6 +237,7 @@ def buy_post(event_slug: str):
         if existing:
             current_app.logger.info("[DEDUPE] Reusando purchase recente token=%s", existing.token)
             flash("Já recebemos sua solicitação ✅ Abrindo o status.", "success")
+            # (não força WhatsApp no dedupe; mas se quiser, passe wa=1 aqui também)
             return redirect(url_for("purchase.purchase_status", token=existing.token))
 
         # =========================================================
@@ -288,6 +292,10 @@ def buy_post(event_slug: str):
                     s.commit()
 
             flash("Reserva enviada ✅ Já já você recebe a confirmação por e-mail.", "success")
+
+            if auto_whats:
+                return redirect(url_for("purchase.purchase_status", token=purchase.token, wa="1"))
+
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         # =========================================================
@@ -327,7 +335,7 @@ def buy_post(event_slug: str):
                     status_url=status_url,
                     price_pending=True,
                     guests=guests,
-                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0, não será exibido pq pending)
+                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0, pending não exibe)
                 )
                 try:
                     send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
@@ -340,6 +348,9 @@ def buy_post(event_slug: str):
                     purchase.reservation_received_email_last_error = str(e)[:2000]
                     s.add(purchase)
                     s.commit()
+
+            if auto_whats:
+                return redirect(url_for("purchase.purchase_status", token=purchase.token, wa="1"))
 
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 

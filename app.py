@@ -25,6 +25,8 @@ from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
 from routes.home import bp_home
 from routes.admin_reservations import bp_admin_reservations
+from whatsapp import bp_whats
+
 
 load_dotenv()
 
@@ -64,6 +66,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp_admin_delete)
     app.register_blueprint(bp_admin_shows)
     app.register_blueprint(bp_admin_reservations)
+    app.register_blueprint(bp_whats)
+
 
     # ✅ pluga o finalizador
     app.extensions["finalize_purchase"] = finalize_purchase_factory()
