@@ -75,7 +75,9 @@
       </div>
     {% endif %}
 
-    <div class="text-xs text-zinc-500 break-all"><span class="font-semibold">Token:</span> {{ purchase.token }}</div>
+    <div class="text-xs text-zinc-500 break-all">
+      <span class="font-semibold">Token:</span> {{ purchase.token }}
+    </div>
   </div>
 
   {% if st == 'pending_payment' %}
@@ -85,15 +87,21 @@
         Enviar comprovante / ver dados do Pix
       </a>
     </div>
+
   {% elif st in ['reservation_pending', 'reservation_pending_price', 'reserved', 'paid'] %}
-    {# ✅ não tem pagamento manual aqui #}
     <div class="mt-4 grid gap-2">
+      {# Texto “pronto” pro cliente mandar pra equipe (WhatsApp direto) #}
       {% set wa_text = ("Olá! Fiz uma reserva no Sons & Sabores ✅\n"
                         ~ "Show: " ~ purchase.show_name ~ "\n"
                         ~ "Nome: " ~ purchase.buyer_name ~ "\n"
                         ~ "Pessoas: " ~ (purchase.ticket_qty or 1) ~ "\n"
                         ~ "Token: " ~ purchase.token) %}
-      {% set wa_link = "https://wa.me/" ~ whatsapp_number ~ "?text=" ~ wa_text|urlencode %}
+
+      {# Se você já passa whatsapp_number pelo backend, usa ele.
+         Se não passar, cai no número do Borogodó (padrão). #}
+      {% set wa_number = (whatsapp_number if whatsapp_number is defined and whatsapp_number else '5531999613652') %}
+      {% set wa_link = "https://wa.me/" ~ wa_number ~ "?text=" ~ wa_text|urlencode %}
+
       <a href="{{ wa_link }}" target="_blank" rel="noopener"
          class="rounded-xl border py-3 font-medium hover:bg-zinc-50 text-center">
         Falar com a equipe no WhatsApp
@@ -108,16 +116,8 @@
          href="{{ url_for('whats.whats_cliente_purchase', token=purchase.token) }}">
         Enviar confirmação para o cliente
       </a>
-
-
-      <a class="btn" target="_blank"
-         href="{{ url_for('whats.whats_cliente', reserva_id=reserva.id) }}">
-        Enviar confirmação para o cliente
-      </a>
-
     </div>
   {% endif %}
-
 
   <div class="mt-4 text-center text-xs text-zinc-500">
     Você pode fechar esta página com segurança.
