@@ -1,79 +1,78 @@
-from flask import Blueprint, redirect, current_app, render_template_string, url_for
+# routes/whatsapp.py
+import os
+from flask import Blueprint, redirect, abort, current_app
 from flask_login import login_required
+from sqlalchemy import select
 
-from models import db, Reserva
-from app_services.utils_whatsapp import whatsapp_link, msg_para_borogodo, msg_para_cliente
+from db import db  # ✅ igual no app: from db import engine, db
+from models import Reserva
+
+from app_services.utils_whatsapp import (
+    whatsapp_link,
+    msg_para_borogodo,
+    msg_para_cliente,
+    phone_to_e164_br,
+)
 
 bp_whats = Blueprint("whats", __name__)
 
-BOROGODO_WHATS = "5531999613652"  # seu número (E.164)
+BOROGODO_WHATS = os.getenv("BOROGODO_WHATS", "5531999613652").strip()
 
 
-@bp_whats.route("/reserva/<int:reserva_id>/whats/borogodo")
+def _get_reserva_or_404(reserva_id: int) -> Reserva:
+    with db() as s:
+        r = s.scalar(select(Reserva).where(Reserva.id == reserva_id))
+        if not r:
+            abort(404)
+        # destaca da sessão pra evitar lazy-load depois
+        s.expunge(r)
+        return r
+
+
+@bp_whats.get("/reserva/<int:reserva_id>/whats/borogodo")
 @login_required
-def whats_borogodo(reserva_id):
-    r = db.session.get(Reserva, reserva_id)
-    if not r:
-        return redirect(url_for("index"))
-    return redirect(whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(r)))
+def whats_borogodo(reserva_id: int):
+    r = _get_reserva_or_404(reserva_id)
+    link = whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(r))
+    return redirect(link)
 
 
-@bp_whats.route("/reserva/<int:reserva_id>/whats/cliente")
+@bp_whats.get("/reserva/<int:reserva_id>/whats/cliente")
 @login_required
-def whats_cliente(reserva_id):
-    r = db.session.get(Reserva, reserva_id)
-    if not r:
-        return redirect(url_for("index"))
-    return redirect(whatsapp_link(r.telefone, msg_para_cliente(r)))
+def whats_cliente(reserva_id: int):
+    r = _get_reserva_or_404(reserva_id)
+
+    tel = (getattr(r, "telefone", "") or "").strip()
+    if not tel:
+        current_app.logger.warning("[WHATS] Reserva %s sem telefone do cliente", reserva_id)
+        abort(400, description="Reserva sem telefone do cliente.")
+
+    link = whatsapp_link(tel, msg_para_cliente(r))
+    return redirect(link)
 
 
-@bp_whats.route("/reserva/<int:reserva_id>/whats/disparar")
-@login_required
-def whats_disparar(reserva_id):
-    """
-    "Disparo automático" SEM API: abre 2 links wa.me (Borogodó + Cliente)
-    e depois volta para /admin (ou onde você quiser).
-    """
-    r = db.session.get(Reserva, reserva_id)
-    if not r:
-        return redirect(url_for("index"))
+# ==========================
+# ✅ “DISPARO AUTOMÁTICO” (BÔNUS)
+# ==========================
+# WhatsApp comum NÃO permite enviar automático via servidor sem API oficial.
+# Então o “automático” aqui é: gerar links prontos e você decide abrir / salvar / mostrar no painel.
 
-    link_boro = whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(r))
-    link_cli = whatsapp_link(r.telefone, msg_para_cliente(r))
+def build_whats_links_for_reserva(reserva) -> dict:
+    cliente_phone = (getattr(reserva, "telefone", "") or "").strip()
+    return {
+        "borogodo_phone": phone_to_e164_br(BOROGODO_WHATS),
+        "cliente_phone": phone_to_e164_br(cliente_phone) if cliente_phone else "",
+        "link_borogodo": whatsapp_link(BOROGODO_WHATS, msg_para_borogodo(reserva)),
+        "link_cliente": whatsapp_link(cliente_phone, msg_para_cliente(reserva)) if cliente_phone else "",
+    }
 
-    back_url = url_for("admin.admin_home") if "admin.admin_home" in current_app.view_functions else url_for("index")
 
-    html = f"""
-    <!doctype html>
-    <html lang="pt-br">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Disparando WhatsApp…</title>
-      <style>
-        body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:20px;max-width:720px}}
-        .card{{border:1px solid #eee;border-radius:12px;padding:14px}}
-        a{{word-break:break-all}}
-        .btn{{display:inline-block;padding:10px 12px;border:1px solid #ccc;border-radius:10px;text-decoration:none}}
-      </style>
-    </head>
-    <body>
-      <h2>Disparando WhatsApp…</h2>
-      <div class="card">
-        <p>Se o navegador bloquear pop-up, clique manualmente:</p>
-        <p><a class="btn" href="{link_boro}" target="_blank" rel="noopener">Whats Borogodó</a></p>
-        <p><a class="btn" href="{link_cli}" target="_blank" rel="noopener">Whats Cliente</a></p>
-        <p><a href="{back_url}">Voltar</a></p>
-      </div>
-
-      <script>
-        // tenta abrir as duas abas/janelas
-        window.open("{link_boro}", "_blank");
-        setTimeout(() => window.open("{link_cli}", "_blank"), 400);
-        // volta sozinho depois de um tempinho
-        setTimeout(() => window.location.href = "{back_url}", 1200);
-      </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
+def auto_whatsapp_on_new_reserva(reserva) -> dict:
+    links = build_whats_links_for_reserva(reserva)
+    current_app.logger.info(
+        "[WHATS/AUTO] reserva_id=%s link_borogodo=%s link_cliente=%s",
+        getattr(reserva, "id", None),
+        links.get("link_borogodo"),
+        links.get("link_cliente"),
+    )
+    return links
