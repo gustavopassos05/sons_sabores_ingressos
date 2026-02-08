@@ -100,9 +100,15 @@
       </a>
 
       <a class="btn" target="_blank"
-         href="{{ url_for('whats.whats_borogodo', reserva_id=reserva.id) }}">
+         href="{{ url_for('whats.whats_borogodo_purchase', token=purchase.token) }}">
         Enviar para o Borogodó (WhatsApp)
       </a>
+
+      <a class="btn" target="_blank"
+         href="{{ url_for('whats.whats_cliente_purchase', token=purchase.token) }}">
+        Enviar confirmação para o cliente
+      </a>
+
 
       <a class="btn" target="_blank"
          href="{{ url_for('whats.whats_cliente', reserva_id=reserva.id) }}">
