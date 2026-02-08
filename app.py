@@ -25,7 +25,7 @@ from routes.admin_delete import bp_admin_delete
 from routes.admin_shows import bp_admin_shows
 from routes.home import bp_home
 from routes.admin_reservations import bp_admin_reservations
-from whatsapp import bp_whats
+from routes.whatsapp import bp_whats
 
 
 load_dotenv()
