@@ -61,12 +61,19 @@
             {{ c.desc }}
           </p>
 
+          {# ✅ PREÇO/COUVERT NO CARD #}
           <div class="mt-1 text-xs text-zinc-500">
             {% if c.requires_ticket == 0 %}
-              Reserva (sem ingresso)
-            {% else %}
+              {# Reserva: mostrar COUVERT (se tiver) #}
               {% if c.price_cents is none %}
-                Preço em definição
+                Reserva · Couvert em definição
+              {% else %}
+                Reserva · Couvert: R$ {{ '%.2f'|format((c.price_cents or 0)/100) }}
+              {% endif %}
+            {% else %}
+              {# Ingresso: mostrar PREÇO (se tiver) #}
+              {% if c.price_cents is none %}
+                Ingresso · Preço em definição
               {% else %}
                 Ingresso: R$ {{ '%.2f'|format((c.price_cents or 0)/100) }}
               {% endif %}
