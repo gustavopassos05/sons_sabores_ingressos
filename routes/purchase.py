@@ -130,6 +130,12 @@ def buy(event_slug: str):
     show_prices_map = {sh.name: (sh.price_cents if sh.price_cents is not None else None) for sh in shows}
     show_requires_map = {sh.name: int(sh.requires_ticket or 0) for sh in shows}
 
+    # ✅ Couvert (para "apenas reserva"): usando price_cents como couvert
+    show_couverts_map = {
+        sh.name: (sh.price_cents if int(sh.requires_ticket or 0) == 0 and sh.price_cents is not None else None)
+        for sh in shows
+    }
+
     return render_template(
         "buy.html",
         event=ev,
@@ -139,6 +145,7 @@ def buy(event_slug: str):
         ticket_price_cents=fallback_price_cents,
         show_prices_map=show_prices_map,
         show_requires_map=show_requires_map,
+        show_couverts_map=show_couverts_map,  # ✅ novo
         preselect_slug=preselect_slug,
     )
 @bp_purchase.post("/buy/<event_slug>")

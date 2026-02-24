@@ -20,9 +20,8 @@
         {% endfor %}
       </select>
 
-
       <p class="text-xs text-zinc-500 mt-1">
-        Se o show for “Apenas reserva”, não haverá pagamento.
+        Se o show for “Apenas reserva”, não haverá pagamento no site.
       </p>
     </div>
 
@@ -83,7 +82,7 @@
     </div>
 
     <div id="reserve_info" class="hidden rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-      Este show é <b>apenas reserva</b> (sem pagamento). Após enviar, aguardaremos sua confirmação e retornaremos em até <b>3 dias</b>.
+       <b>Reserva para o show</b>. O <b>couvert</b> é pago no local. Após enviar, confirmaremos e retornaremos em até <b>3 dias</b>.
     </div>
 
     <!-- PREVIEW -->
@@ -114,6 +113,8 @@
   const showPrices = {{ show_prices_map|default({})|tojson }};
   // se precisa ingresso (name -> 1/0)
   const showRequires = {{ show_requires_map|default({})|tojson }};
+  // ✅ couvert por show (name -> cents ou null) — para shows "apenas reserva"
+  const showCouverts = {{ show_couverts_map|default({})|tojson }};
 
   function parseGuests(raw) {
     raw = (raw || "").trim();
@@ -155,6 +156,13 @@
     return fallbackPriceCents;
   }
 
+  // ✅ Couvert do show (para "apenas reserva")
+  function getSelectedCouvertCents(name) {
+    if (!name) return null;
+    if (name in showCouverts) return showCouverts[name];
+    return null;
+  }
+
   function updatePreview() {
     const name = getSelectedShowName();
     const req = requiresTicketForShow(name);
@@ -180,11 +188,21 @@
       return;
     }
 
-    // ✅ show é apenas reserva
+    // ✅ show é apenas reserva (sem pagamento no site) — exibe COUVERT
     if (req === false) {
-      document.getElementById("unit_price_lbl").textContent = "Reserva (sem pagamento)";
-      document.getElementById("total_people_lbl").textContent = String(totalPeople);
-      document.getElementById("total_price_lbl").textContent = "R$ 0,00";
+      const couvertCents = getSelectedCouvertCents(name);
+
+      if (couvertCents === null || couvertCents === undefined) {
+        document.getElementById("unit_price_lbl").textContent = "Reserva (sem pagamento no site)";
+        document.getElementById("total_people_lbl").textContent = String(totalPeople);
+        document.getElementById("total_price_lbl").textContent = "—";
+      } else {
+        const totalCents = totalPeople * couvertCents;
+        document.getElementById("unit_price_lbl").textContent = formatBRLFromCents(couvertCents) + " (couvert)";
+        document.getElementById("total_people_lbl").textContent = String(totalPeople);
+        document.getElementById("total_price_lbl").textContent = formatBRLFromCents(totalCents);
+      }
+
       warning.classList.add("hidden");
       reserveInfo.classList.remove("hidden");
       btn.disabled = false;
@@ -330,6 +348,7 @@
     });
   }
 </script>
+
 <script>
   (function () {
     const form = document.getElementById("buyForm");
@@ -345,6 +364,5 @@
     });
   })();
 </script>
-
 
 {% endblock %}
