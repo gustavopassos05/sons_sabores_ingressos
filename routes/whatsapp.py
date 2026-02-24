@@ -2,7 +2,7 @@
 import os
 from flask import Blueprint, redirect, abort, current_app
 from sqlalchemy import select
-
+from routes.admin_auth import admin_required
 from db import db
 from models import Purchase  # ✅ aqui é o modelo certo do projeto de ingressos
 
@@ -15,7 +15,11 @@ bp_whats = Blueprint("whats", __name__)
 
 BOROGODO_WHATS = (os.getenv("BOROGODO_WHATS") or "5531999613652").strip()
 
-
+def equipe_only():
+    role = (getattr(current_user, "role", "") or "").lower()
+    is_admin = bool(getattr(current_user, "is_admin", False))
+    if not is_admin and role not in ("admin", "equipe"):
+        abort(403)
 def _get_purchase_or_404(token: str) -> Purchase:
     token = (token or "").strip()
     if not token:
