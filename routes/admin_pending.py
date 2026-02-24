@@ -14,7 +14,6 @@ from app_services.email_templates import build_reservation_email
 
 bp_admin_pending = Blueprint("admin_pending", __name__)
 
-
 @bp_admin_pending.post("/admin/confirm-reservation/<token>")
 @admin_required
 def confirm_reservation(token: str):
@@ -168,7 +167,7 @@ def admin_reject(token: str):
 
         purchase.status = "cancelled"
         purchase.rejection_reason = reason or "Não foi possível confirmar a reserva."
-        purchase.rejected_at = now_sp()
+        purchase.rejected_at = datetime.utcnow()
         s.add(purchase)
         s.commit()
 
