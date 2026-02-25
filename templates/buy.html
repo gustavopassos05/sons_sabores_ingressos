@@ -49,7 +49,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <label class="text-sm text-zinc-600">E-mail</label>
-        <input name="buyer_email" type="email" class="w-full rounded-xl border p-3 text-sm" />
+        <input name="buyer_email" type="email" required class="w-full rounded-xl border p-3 text-sm" />
       </div>
 
       <div>
@@ -58,6 +58,7 @@
           id="phone"
           name="buyer_phone"
           inputmode="tel"
+          required
           placeholder="(31) 9 9999-9999"
           maxlength="16"
           class="w-full rounded-xl border p-3 text-sm"
@@ -105,7 +106,42 @@
 
   </form>
 </div>
+<script>
+  (function () {
+    const form = document.getElementById("buyForm");
+    if (!form) return;
 
+    function onlyDigits(v) { return (v || "").replace(/\D/g, ""); }
+
+    function isBRMobile(phone) {
+      const d = onlyDigits(phone);
+      return d.length === 11 && d[2] === "9";
+    }
+
+    form.addEventListener("submit", function (e) {
+      const cpf = document.getElementById("cpf")?.value || "";
+      const phone = document.getElementById("phone")?.value || "";
+
+      const cpfDigits = onlyDigits(cpf);
+      const phoneDigits = onlyDigits(phone);
+
+      // usa sua função isValidCPF já existente no arquivo
+      if (!isValidCPF(cpfDigits)) {
+        e.preventDefault();
+        alert("CPF inválido. Confira os números.");
+        document.getElementById("cpf")?.focus();
+        return;
+      }
+
+      if (!isBRMobile(phone)) {
+        e.preventDefault();
+        alert("Informe um celular com DDD no formato (31) 9 9999-9999.");
+        document.getElementById("phone")?.focus();
+        return;
+      }
+    });
+  })();
+</script>
 <script>
   // fallback geral (ENV)
   const fallbackPriceCents = {{ ticket_price_cents|default(5000) }};

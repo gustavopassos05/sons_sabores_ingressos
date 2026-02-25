@@ -26,6 +26,33 @@ def now_sp() -> datetime:
 def _digits(s: str) -> str:
     return "".join(c for c in (s or "") if c.isdigit())
 
+def _is_br_mobile(phone: str) -> bool:
+    d = _digits(phone)
+    # celular BR: 11 dígitos, com 9 como 3º dígito (após DDD)
+    # Ex: 31 9 9999 9999 => d[2] == '9'
+    return len(d) == 11 and d[2] == "9"
+def _is_valid_cpf_digits(cpf_digits: str) -> bool:
+    cpf = _digits(cpf_digits)
+    if len(cpf) != 11:
+        return False
+    if cpf == cpf[0] * 11:
+        return False
+
+    # dígito 1
+    s = sum(int(cpf[i]) * (10 - i) for i in range(9))
+    d1 = (s * 10) % 11
+    d1 = 0 if d1 == 10 else d1
+    if d1 != int(cpf[9]):
+        return False
+
+    # dígito 2
+    s = sum(int(cpf[i]) * (11 - i) for i in range(10))
+    d2 = (s * 10) % 11
+    d2 = 0 if d2 == 10 else d2
+    if d2 != int(cpf[10]):
+        return False
+
+    return True
 def _cpf_allowed(cpf_digits: str) -> bool:
     raw = (os.getenv("CPF_ALLOWLIST") or "").strip()
     if not raw:
@@ -155,7 +182,9 @@ def buy_post(event_slug: str):
         raise RuntimeError("BASE_URL não configurado")
 
     # ✅ Disparo automático de WhatsApp (via purchase_status?wa=1)
-    auto_whats = (os.getenv("AUTO_WHATSAPP_ON_CREATE", "0") or "").strip().lower() in ("1", "true", "t", "yes", "y", "on")
+    auto_whats = (os.getenv("AUTO_WHATSAPP_ON_CREATE", "0") or "").strip().lower() in (
+        "1", "true", "t", "yes", "y", "on"
+    )
 
     show_name = (request.form.get("show_name") or "").strip()
     buyer_name = (request.form.get("buyer_name") or "").strip()
@@ -163,6 +192,9 @@ def buy_post(event_slug: str):
     buyer_email = (request.form.get("buyer_email") or "").strip()
     buyer_phone = (request.form.get("buyer_phone") or "").strip()
 
+    # ---------------------------
+    # ✅ validações obrigatórias
+    # ---------------------------
     if not show_name:
         flash("Selecione o show.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
@@ -176,10 +208,39 @@ def buy_post(event_slug: str):
         flash("CPF é obrigatório.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
+    if not _is_valid_cpf_digits(cpf_digits):
+        flash("CPF inválido. Confira os números.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    # (opcional mas recomendado) CPF deve ter 11 dígitos
+    if len(cpf_digits) != 11:
+        flash("CPF inválido. Confira os números.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
     if not _cpf_allowed(cpf_digits):
         flash("Este CPF ainda não está liberado para compra.", "error")
         return redirect(url_for("purchase.buy", event_slug=event_slug))
 
+    if not buyer_email:
+        flash("E-mail é obrigatório.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    # validação simples (boa o suficiente pro seu caso)
+    if ("@" not in buyer_email) or ("." not in buyer_email.split("@")[-1]):
+        flash("E-mail inválido.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    if not buyer_phone:
+        flash("Telefone (WhatsApp) é obrigatório.", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    if not _is_br_mobile(buyer_phone):
+        flash("Informe um celular com DDD (formato: (31) 9 9999-9999).", "error")
+        return redirect(url_for("purchase.buy", event_slug=event_slug))
+
+    # ---------------------------
+    # acompanhantes
+    # ---------------------------
     guests_raw = (request.form.get("guests_text") or "").strip()
     guests_lines = _parse_guests(guests_raw)
     guests_text = "\n".join(guests_lines)
@@ -214,7 +275,7 @@ def buy_post(event_slug: str):
                         "pending_payment",
                         "paid",
                         "reserved",
-                    ])
+                    ]),
                 )
             ) or 0
 
@@ -244,7 +305,6 @@ def buy_post(event_slug: str):
         if existing:
             current_app.logger.info("[DEDUPE] Reusando purchase recente token=%s", existing.token)
             flash("Já recebemos sua solicitação ✅ Abrindo o status.", "success")
-            # (não força WhatsApp no dedupe; mas se quiser, passe wa=1 aqui também)
             return redirect(url_for("purchase.purchase_status", token=existing.token))
 
         # =========================================================
@@ -271,38 +331,37 @@ def buy_post(event_slug: str):
 
             send_reservation_notification(purchase)
 
-            if buyer_email and "@" in buyer_email:
-                guests = [g.strip() for g in guests_lines if g.strip()]
-                status_url = f"{base_url}/status/{purchase.token}"
+            # agora e-mail sempre existe e é válido, então pode enviar direto
+            guests = [g.strip() for g in guests_lines if g.strip()]
+            status_url = f"{base_url}/status/{purchase.token}"
 
-                subject, text, html = build_reservation_received_email(
-                    buyer_name=buyer_name,
-                    buyer_email=buyer_email,
-                    show_name=show_name,
-                    token=purchase.token,
-                    ticket_qty=total_people,
-                    status_url=status_url,
-                    price_pending=False,
-                    guests=guests,
-                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0)
-                )
-                try:
-                    send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
-                    purchase.reservation_received_email_sent_at = now_sp()
-                    purchase.reservation_received_email_sent_to = buyer_email
-                    purchase.reservation_received_email_last_error = None
-                    s.add(purchase)
-                    s.commit()
-                except Exception as e:
-                    purchase.reservation_received_email_last_error = str(e)[:2000]
-                    s.add(purchase)
-                    s.commit()
+            subject, text, html = build_reservation_received_email(
+                buyer_name=buyer_name,
+                buyer_email=buyer_email,
+                show_name=show_name,
+                token=purchase.token,
+                ticket_qty=total_people,
+                status_url=status_url,
+                price_pending=False,
+                guests=guests,
+                unit_price_cents=purchase.ticket_unit_price_cents,  # (0)
+            )
+            try:
+                send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
+                purchase.reservation_received_email_sent_at = now_sp()
+                purchase.reservation_received_email_sent_to = buyer_email
+                purchase.reservation_received_email_last_error = None
+                s.add(purchase)
+                s.commit()
+            except Exception as e:
+                purchase.reservation_received_email_last_error = str(e)[:2000]
+                s.add(purchase)
+                s.commit()
 
-            flash("Reserva enviada ✅ Já já você recebe a confirmação por e-mail.", "success")
+            flash("Reserva enviada ✅ Você receberá a confirmação por e-mail.", "success")
 
             if auto_whats:
                 return redirect(url_for("purchase.purchase_status", token=purchase.token, wa="1"))
-
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         # =========================================================
@@ -329,36 +388,34 @@ def buy_post(event_slug: str):
 
             send_reservation_notification(purchase)
 
-            if buyer_email and "@" in buyer_email:
-                guests = [g.strip() for g in guests_lines if g.strip()]
-                status_url = f"{base_url}/status/{purchase.token}"
+            guests = [g.strip() for g in guests_lines if g.strip()]
+            status_url = f"{base_url}/status/{purchase.token}"
 
-                subject, text, html = build_reservation_received_email(
-                    buyer_name=buyer_name,
-                    buyer_email=buyer_email,
-                    show_name=show_name,
-                    token=purchase.token,
-                    ticket_qty=total_people,
-                    status_url=status_url,
-                    price_pending=True,
-                    guests=guests,
-                    unit_price_cents=purchase.ticket_unit_price_cents,  # ✅ (0, pending não exibe)
-                )
-                try:
-                    send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
-                    purchase.reservation_received_email_sent_at = now_sp()
-                    purchase.reservation_received_email_sent_to = buyer_email
-                    purchase.reservation_received_email_last_error = None
-                    s.add(purchase)
-                    s.commit()
-                except Exception as e:
-                    purchase.reservation_received_email_last_error = str(e)[:2000]
-                    s.add(purchase)
-                    s.commit()
+            subject, text, html = build_reservation_received_email(
+                buyer_name=buyer_name,
+                buyer_email=buyer_email,
+                show_name=show_name,
+                token=purchase.token,
+                ticket_qty=total_people,
+                status_url=status_url,
+                price_pending=True,
+                guests=guests,
+                unit_price_cents=purchase.ticket_unit_price_cents,  # (0)
+            )
+            try:
+                send_email(to_email=buyer_email, subject=subject, body_text=text, body_html=html)
+                purchase.reservation_received_email_sent_at = now_sp()
+                purchase.reservation_received_email_sent_to = buyer_email
+                purchase.reservation_received_email_last_error = None
+                s.add(purchase)
+                s.commit()
+            except Exception as e:
+                purchase.reservation_received_email_last_error = str(e)[:2000]
+                s.add(purchase)
+                s.commit()
 
             if auto_whats:
                 return redirect(url_for("purchase.purchase_status", token=purchase.token, wa="1"))
-
             return redirect(url_for("purchase.purchase_status", token=purchase.token))
 
         # =========================================================
@@ -396,11 +453,8 @@ def buy_post(event_slug: str):
         s.add(payment)
         s.commit()
 
-        # ✅ avisar admin também quando está pendente de pagamento
         send_reservation_notification(purchase)
-
         return redirect(url_for("purchase.pay_manual", token=purchase.token))
-
 # ---------------------------
 # PÁGINA PIX MANUAL + UPLOAD
 # ---------------------------
