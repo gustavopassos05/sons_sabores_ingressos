@@ -96,7 +96,7 @@
             name="price_brl"
             inputmode="decimal"
             placeholder="50,00"
-            value="{% if s.price_cents is not none %}{{ '%.2f'|format((s.price_cents or 0)/100) }}{% endif %}"
+            value="{% if s.price_cents is not none %}{{ '%.2f'|format((s.price_cents or 0)/100)|replace('.', ',') }}{% endif %}"
             class="w-full rounded-xl border p-2 text-xs"
           />
           <div class="text-[11px] text-zinc-400 mt-1">
