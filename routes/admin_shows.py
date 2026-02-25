@@ -19,27 +19,43 @@ bp_admin_shows = Blueprint("admin_shows", __name__)
 # -----------------------------
 # Helpers
 # -----------------------------
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 def brl_to_cents(value: str) -> int | None:
     """
-    Converte "50,00" -> 5000
-    Aceita: "50", "50,0", "50,00", "1.234,56", "R$ 50,00"
+    Converte BRL -> centavos (int).
+
+    Aceita:
+      - "20,00"  -> 2000
+      - "20.00"  -> 2000
+      - "20"     -> 2000
+      - "1.234,56" -> 123456
+      - "R$ 50,00" -> 5000
+
     Retorna None se vazio.
     """
     raw = (value or "").strip()
     if not raw:
         return None
 
-    raw = raw.replace("R$", "").strip()
-    raw = raw.replace(".", "").replace(",", ".")  # 1.234,56 -> 1234.56
+    s = raw.replace("R$", "").strip()
+
+    # Se tem vírgula, é pt-BR: "." é milhar e "," é decimal
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        # Se não tem vírgula, assume que "." (se houver) é decimal (padrão input number)
+        # Ex: "20.00" fica "20.00"
+        # Ex: "2000" fica "2000"
+        pass
 
     try:
-        v = float(raw)
-    except Exception:
+        v = Decimal(s)
+    except InvalidOperation:
         return None
 
-    cents = int(round(v * 100))
+    cents = int((v * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     return cents if cents > 0 else None
-
 
 def slugify(texto: str) -> str:
     texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
