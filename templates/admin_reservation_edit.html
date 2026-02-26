@@ -1,0 +1,112 @@
+{% extends "admin_base.html" %}
+{% block admin_content %}
+
+<div class="bg-white rounded-2xl shadow p-5 max-w-4xl">
+  <div class="flex items-start justify-between gap-3 mb-5">
+    <div>
+      <h2 class="text-xl font-semibold">Editar reserva</h2>
+      <p class="text-sm text-zinc-500 break-all">
+        ID: {{ p.id }} · Token: {{ p.token }} · Event ID: {{ p.event_id }}
+      </p>
+    </div>
+
+    <a href="{{ url_for('admin_reservations.admin_reservations', show=back_show, q=back_q) }}"
+       class="rounded-xl border px-4 py-2 text-sm hover:bg-zinc-50">
+      Voltar
+    </a>
+  </div>
+
+  <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div class="md:col-span-2">
+      <label class="text-sm text-zinc-600">Show</label>
+      <input name="show_name" value="{{ p.show_name }}" class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Comprador</label>
+      <input name="buyer_name" value="{{ p.buyer_name }}" class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">E-mail</label>
+      <input name="buyer_email" value="{{ p.buyer_email or '' }}" class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Telefone</label>
+      <input name="buyer_phone" value="{{ p.buyer_phone or '' }}" class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">CPF (com máscara)</label>
+      <input name="buyer_cpf" value="{{ p.buyer_cpf or '' }}" class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">CPF (digits)</label>
+      <input name="buyer_cpf_digits" value="{{ p.buyer_cpf_digits or '' }}" class="w-full rounded-xl border p-3 text-sm">
+      <p class="text-xs text-zinc-500 mt-1">Se você usa isso pra busca/validação, vale manter coerente com o CPF.</p>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Ticket qty</label>
+      <input name="ticket_qty" value="{{ p.ticket_qty }}" inputmode="numeric"
+             class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Status</label>
+      <select name="status" class="w-full rounded-xl border p-3 text-sm">
+        {% for st in statuses %}
+          <option value="{{ st }}" {% if (p.status or '') == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Adultos</label>
+      <input name="qty_adult" value="{{ p.qty_adult }}" inputmode="numeric"
+             class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div>
+      <label class="text-sm text-zinc-600">Crianças</label>
+      <input name="qty_child" value="{{ p.qty_child }}" inputmode="numeric"
+             class="w-full rounded-xl border p-3 text-sm">
+    </div>
+
+    <div class="md:col-span-2">
+      <label class="text-sm text-zinc-600">Convidados (texto)</label>
+      <textarea name="guests_text" rows="4"
+                class="w-full rounded-xl border p-3 text-sm">{{ p.guests_text or '' }}</textarea>
+    </div>
+
+    <div class="md:col-span-2">
+      <label class="text-sm text-zinc-600">Motivo de rejeição / observações</label>
+      <textarea name="rejection_reason" rows="3"
+                class="w-full rounded-xl border p-3 text-sm">{{ p.rejection_reason or '' }}</textarea>
+    </div>
+
+    <div class="md:col-span-2">
+      <label class="text-sm text-zinc-600">Token</label>
+      <input name="token" value="{{ p.token }}" class="w-full rounded-xl border p-3 text-sm">
+      <p class="text-xs text-zinc-500 mt-1">Cuidado: token é público e usado na URL.</p>
+    </div>
+
+    <input type="hidden" name="back_show" value="{{ back_show }}">
+    <input type="hidden" name="back_q" value="{{ back_q }}">
+
+    <div class="md:col-span-2 flex gap-2 pt-2">
+      <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">
+        Salvar alterações
+      </button>
+
+      <a href="{{ url_for('admin_reservations.admin_reservations', show=back_show, q=back_q) }}"
+         class="rounded-xl border px-5 py-3 text-sm hover:bg-zinc-50">
+        Cancelar
+      </a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
