@@ -26,7 +26,7 @@
     </div>
 
     <!-- Filtros -->
-    <form method="get" class="flex flex-col md:flex-row gap-2">
+    <form method="get" class="flex flex-col md:flex-row gap-2 md:items-center">
       <input
         name="q"
         value="{{ q }}"
@@ -46,21 +46,6 @@
       <button class="rounded-xl bg-black text-white px-5 py-3 text-sm">
         Filtrar
       </button>
-      {% if show_stats and show_stats|length > 0 %}
-        <div class="flex flex-wrap gap-2 mb-4">
-          {% for name, people in show_stats %}
-            <a href="{{ url_for('admin_reservations.admin_reservations', show=name, q=q) }}"
-               class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm hover:bg-zinc-50
-                      {% if show_selected == name %} bg-black text-white border-black {% endif %}">
-              <span>{{ name }}</span>
-              <span class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-semibold
-                           {% if show_selected == name %} bg-white text-black {% else %} bg-black text-white {% endif %}">
-                {{ people }}
-              </span>
-            </a>
-          {% endfor %}
-        </div>
-      {% endif %}
 
       {% if show_selected %}
         <a
@@ -70,70 +55,123 @@
           Portaria (PDF)
         </a>
       {% else %}
-        <span
-          class="rounded-xl border px-4 py-3 text-sm text-zinc-400 cursor-not-allowed"
-        >
+        <span class="rounded-xl border px-4 py-3 text-sm text-zinc-400 cursor-not-allowed">
           Portaria (PDF)
         </span>
       {% endif %}
     </form>
-  </div>
 
-  <!-- Header -->
-  <div class="hidden md:grid grid-cols-6 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
-    <div>Show</div>
-    <div>Comprador</div>
-    <div>Pessoas</div>
-    <div>Data da reserva</div>
-    <div>Token</div>
-    <div class="text-right">Ações</div>
-  </div>
-
-  {% for p in rows %}
-    <div class="p-4 text-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-start">
-      <!-- ... suas 5 colunas iguais ... -->
-
-      <div class="md:text-right">
-        <div class="md:hidden text-xs text-zinc-400 mb-1">Ações</div>
-        <div class="flex md:justify-end gap-2">
+    <!-- Pills por show (fora do form pra não ficar estranho) -->
+    {% if show_stats and show_stats|length > 0 %}
+      <div class="flex flex-wrap gap-2">
+        {% for name, people in show_stats %}
           <a
-            class="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
-            href="{{ url_for('admin_reservations.admin_reservation_edit', purchase_id=p.id, show=show_selected, q=q) }}"
+            href="{{ url_for('admin_reservations.admin_reservations', show=name, q=q) }}"
+            class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm hover:bg-zinc-50
+                   {% if show_selected == name %} bg-black text-white border-black {% endif %}"
           >
-            Editar
+            <span>{{ name }}</span>
+            <span class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-semibold
+                         {% if show_selected == name %} bg-white text-black {% else %} bg-black text-white {% endif %}">
+              {{ people }}
+            </span>
           </a>
-
-          <form
-            method="post"
-            action="{{ url_for('admin_reservations.admin_reservation_delete', purchase_id=p.id) }}"
-            onsubmit="return confirm('Excluir esta reserva? Essa ação não pode ser desfeita.')"
-          >
-            <input type="hidden" name="back_show" value="{{ show_selected }}">
-            <input type="hidden" name="back_q" value="{{ q }}">
-            <button class="rounded-xl bg-red-600 text-white px-3 py-2 text-sm hover:opacity-90">
-              Excluir
-            </button>
-          </form>
-
-          {# Se preferir o SOFT delete, use isso no lugar do form acima:
-          <form method="post" action="{{ url_for('admin_reservations.admin_reservation_cancel', purchase_id=p.id) }}">
-            <input type="hidden" name="back_show" value="{{ show_selected }}">
-            <input type="hidden" name="back_q" value="{{ q }}">
-            <button class="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50">
-              Cancelar
-            </button>
-          </form>
-          #}
-        </div>
+        {% endfor %}
       </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Tabela -->
+  <div class="rounded-xl border divide-y">
+
+    <!-- Header -->
+    <div class="hidden md:grid grid-cols-6 gap-3 bg-zinc-50 text-sm text-zinc-600 p-3 font-medium">
+      <div>Show</div>
+      <div>Comprador</div>
+      <div>Pessoas</div>
+      <div>Data da reserva</div>
+      <div>Token</div>
+      <div class="text-right">Ações</div>
     </div>
-  {% endfor %}
+
+    {% for p in rows %}
+      <div class="p-4 text-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-start">
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Show</div>
+          {{ p.show_name }}
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Comprador</div>
+          <div class="font-medium">{{ p.buyer_name }}</div>
+          <div class="text-xs text-zinc-500">CPF: {{ p.buyer_cpf or "—" }}</div>
+          <div class="text-xs text-zinc-500">Tel: {{ p.buyer_phone or "—" }}</div>
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Pessoas</div>
+          <span class="font-semibold">{{ p.ticket_qty or 1 }}</span>
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Data da reserva</div>
+          {% if p.created_at %}
+            {{ p.created_at.strftime('%d/%m/%Y %H:%M') }}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+
+        <div>
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Token</div>
+          <span class="break-all">{{ p.token }}</span>
+        </div>
+
+        <div class="md:text-right">
+          <div class="md:hidden text-xs text-zinc-400 mb-1">Ações</div>
+          <div class="flex md:justify-end gap-2">
+            <a
+              class="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50"
+              href="{{ url_for('admin_reservations.admin_reservation_edit', purchase_id=p.id, show=show_selected, q=q) }}"
+            >
+              Editar
+            </a>
+
+            <form
+              method="post"
+              action="{{ url_for('admin_reservations.admin_reservation_delete', purchase_id=p.id) }}"
+              onsubmit="return confirm('Excluir esta reserva? Essa ação não pode ser desfeita.')"
+            >
+              <input type="hidden" name="back_show" value="{{ show_selected }}">
+              <input type="hidden" name="back_q" value="{{ q }}">
+              <button class="rounded-xl bg-red-600 text-white px-3 py-2 text-sm hover:opacity-90">
+                Excluir
+              </button>
+            </form>
+
+            {# Se preferir o SOFT delete, use isso no lugar do form acima:
+            <form method="post" action="{{ url_for('admin_reservations.admin_reservation_cancel', purchase_id=p.id) }}">
+              <input type="hidden" name="back_show" value="{{ show_selected }}">
+              <input type="hidden" name="back_q" value="{{ q }}">
+              <button class="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50">
+                Cancelar
+              </button>
+            </form>
+            #}
+          </div>
+        </div>
+
+      </div>
+    {% endfor %}
 
     {% if rows|length == 0 %}
       <div class="p-6 text-center text-zinc-500">
         Nenhuma reserva encontrada.
       </div>
     {% endif %}
+
   </div>
 </div>
 
