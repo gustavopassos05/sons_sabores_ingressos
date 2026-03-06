@@ -15,8 +15,10 @@ bp_home = Blueprint("home", __name__)
 
 SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
 
+
 def now_sp():
     return datetime.now(SAO_PAULO_TZ).replace(tzinfo=None)
+
 
 def _static_show_image_url(show_slug: str) -> str:
     """
@@ -29,6 +31,7 @@ def _static_show_image_url(show_slug: str) -> str:
             return url_for("static", filename=rel)
 
     return url_for("static", filename="shows/placeholder.jpg")
+
 
 def _parse_show_datetime(date_text: str) -> datetime | None:
     """
@@ -73,14 +76,13 @@ def _parse_show_datetime(date_text: str) -> datetime | None:
     s = re.sub(r"(\d{1,2})h\b", r"\1:00", s)
     s = re.sub(r"\s+", " ", s).strip()
 
-    # meses por extenso pt-br
+    # meses por extenso pt-BR
     months = {
         "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4,
         "maio": 5, "junho": 6, "julho": 7, "agosto": 8,
         "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12,
     }
 
-    # helper: decide ano quando falta
     def _infer_year(day: int, month: int) -> int:
         now = now_sp()
         y = now.year
@@ -88,7 +90,7 @@ def _parse_show_datetime(date_text: str) -> datetime | None:
             candidate = datetime(y, month, day)
         except Exception:
             return y
-        # se ficou "muito" no passado, assume próximo ano
+
         if (now - candidate).days > 60:
             return y + 1
         return y
@@ -104,7 +106,7 @@ def _parse_show_datetime(date_text: str) -> datetime | None:
         except Exception:
             return None
 
-    # 2) dd/mm [hh:mm]  (sem ano)
+    # 2) dd/mm [hh:mm] (sem ano)
     m = re.search(r"(\d{1,2})[\/\-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?", s)
     if m:
         d, mo = int(m.group(1)), int(m.group(2))
@@ -117,7 +119,6 @@ def _parse_show_datetime(date_text: str) -> datetime | None:
             return None
 
     # 3) dd de <mes> [de yyyy] [ - hh:mm ]
-    # exemplos: "30 de janeiro - 20:00", "30 de janeiro de 2026 20:30"
     m = re.search(
         r"(\d{1,2})\s+de\s+([a-zç]+)(?:\s+de\s+(\d{4}))?(?:\s*[- ]\s*(\d{1,2}):(\d{2}))?",
         s
@@ -137,6 +138,7 @@ def _parse_show_datetime(date_text: str) -> datetime | None:
             return None
 
     return None
+
 
 @bp_home.get("/")
 def home():
@@ -160,10 +162,16 @@ def home():
 
     for sh in shows:
         dt = _parse_show_datetime(getattr(sh, "date_text", ""))  # pode ser None
-        is_past = (dt is not None and dt < now)
+
+        # Mantém ativo durante todo o dia do show.
+        # Só considera "passado" quando já virou o dia seguinte.
+        is_past = (dt is not None and now.date() > dt.date())
 
         title = (getattr(sh, "title", None) or "").strip() or sh.name
-        description = (getattr(sh, "description", None) or "").strip() or "Reserve seu lugar e venha viver essa noite com a gente."
+        description = (
+            (getattr(sh, "description", None) or "").strip()
+            or "Reserve seu lugar e venha viver essa noite com a gente."
+        )
         subtitle = "Ao vivo no Borogodó"
 
         img_url = (getattr(sh, "image_url", None) or "").strip()
@@ -175,8 +183,8 @@ def home():
             "original_name": sh.name,
             "slug": sh.slug,
             "date_text": sh.date_text,
-            "dt": dt,                 # ✅ novo
-            "is_past": is_past,       # ✅ novo
+            "dt": dt,
+            "is_past": is_past,
             "price_cents": sh.price_cents,
             "requires_ticket": int(sh.requires_ticket or 0),
             "subtitle": subtitle,
@@ -184,14 +192,14 @@ def home():
             "img": img_url,
         })
 
-    # ✅ ORDEM:
-    # 1) futuros (dt asc)
+    # ORDEM:
+    # 1) futuros/ativos (dt asc)
     # 2) passados (dt desc, mais recente primeiro)
     # 3) sem data (por último)
     def _sort_key(c):
         dt = c["dt"]
         if dt is None:
-            return (3, datetime.max.timestamp())
+            return (3, float("inf"))
         if c["is_past"]:
             return (2, -dt.timestamp())
         return (1, dt.timestamp())
